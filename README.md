@@ -111,7 +111,7 @@ For comprehensive testing of desktop and mobile applications:
 ```bash
 # Start the VNC environment
 docker run -d \
-  --name factif-ubuntu-vnc \
+  --name factif-vnc \
   -p 5900:5900 \
   -p 6080:6080 \
   factif-ubuntu-vnc
