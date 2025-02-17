@@ -1,33 +1,46 @@
 import { Response } from "express";
 import { config } from "../config";
-import { StreamResponse } from "../types";
+import { ExploreActionTypes, Modes, StreamResponse } from "../types";
 import { ChatMessage } from "../types/chat.types";
 import { StreamingSource } from "../types/stream.types";
 import { OmniParserResult } from "../types/action.types";
 import { LLMProvider } from "./llm/LLMProvider";
-import { AnthropicProvider } from "./llm/AnthropicProvider";
+import { trimHistory } from "../utils/historyManager";
+import { ExploreModeAnthropicProvider } from "./llm/ExploreModeAnthropicProvider";
 import { OpenAIProvider } from "./llm/OpenAIProvider";
 import { GeminiProvider } from "./llm/GeminiProvider";
-import { trimHistory } from "../utils/historyManager";
+import { AnthropicProvider } from "./llm/AnthropicProvider";
 
 export class ChatService {
   private static provider: LLMProvider;
 
-  static {
-    switch (config.llm.provider) {
-      case "openai":
-        this.provider = new OpenAIProvider("openai");
-        break;
-      case "azure-openai":
-        this.provider = new OpenAIProvider("azure");
-        break;
-      case "gemini":
-        this.provider = new GeminiProvider();
-        break;
-      case "anthropic":
-      default:
-        this.provider = new AnthropicProvider();
-        break;
+  static createProvider(mode: Modes) {
+    if (mode === Modes.REGRESSION) {
+      switch (config.llm.provider) {
+        case "openai":
+          this.provider = new OpenAIProvider("openai");
+          break;
+        case "azure-openai":
+          this.provider = new OpenAIProvider("azure");
+          break;
+        case "gemini":
+          this.provider = new GeminiProvider();
+          break;
+        case "anthropic":
+        default:
+          this.provider = new AnthropicProvider();
+          break;
+      }
+    } else if (mode === Modes.EXPLORE) {
+      switch (config.llm.provider) {
+        case "openai":
+        case "azure-openai":
+        case "gemini":
+        case "anthropic":
+        default:
+          this.provider = new ExploreModeAnthropicProvider();
+          break;
+      }
     }
   }
 
@@ -39,6 +52,8 @@ export class ChatService {
     res: Response,
     message: string,
     history: ChatMessage[] = [],
+    mode: Modes = Modes.REGRESSION,
+    type: ExploreActionTypes = ExploreActionTypes.EXPLORE,
     imageData?: string,
     source?: StreamingSource,
     omniParserResult?: OmniParserResult,
@@ -77,6 +92,8 @@ export class ChatService {
         res,
         message,
         trimmedHistory,
+        mode,
+        type,
         source,
         imageData,
         omniParserResult,
@@ -94,5 +111,9 @@ export class ChatService {
       clearInterval(keepAliveInterval);
       res.end();
     }
+  }
+
+  static isProviderAvailable() {
+    return !!ChatService.provider;
   }
 }

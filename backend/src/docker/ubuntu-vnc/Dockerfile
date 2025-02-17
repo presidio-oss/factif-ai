@@ -31,6 +31,8 @@ RUN apt-get update && apt-get install -y \
     scrot \
     gnome-screenshot \
     xdotool \
+    xsel \
+    xclip \
     && add-apt-repository ppa:mozillateam/ppa \
     && apt-get update \
     && apt-get install -y --no-install-recommends \

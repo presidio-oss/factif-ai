@@ -4,12 +4,16 @@ import { StreamingSource } from "../types/stream.types";
 import { TestcaseController } from "./testcaseController";
 import { getLatestScreenshot, saveScreenshot } from "../utils/screenshotUtils";
 import { ExploreActionTypes, Modes } from "../types";
+import { getCurrentUrlBasedOnSource } from "../utils/common.util";
 
-export class ChatController {
-  static async handleChatMessage(req: Request, res: Response): Promise<void> {
+export class ExploreController {
+  static async handleExploreMessage(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
     try {
       !ChatService.isProviderAvailable() &&
-        ChatService.createProvider(Modes.REGRESSION);
+        ChatService.createProvider(Modes.EXPLORE);
       // Get data from request body
       const { message, imageData, history, omniParserResult } = req.body;
 
@@ -18,8 +22,11 @@ export class ChatController {
       const currentChatId = req.query.currentChatId as string;
       const source = req.query.source as StreamingSource | undefined;
       const saveScreenshots = req.query.saveScreenshots as string;
-      const mode = req.query.mode as Modes;
-      const type = req.query.type as ExploreActionTypes;
+      let type = req.query.type as string;
+
+      if (type == "undefined") {
+        type = ExploreActionTypes.EXPLORE;
+      }
 
       if (!message || !Array.isArray(history)) {
         res.status(400).json({
@@ -32,6 +39,7 @@ export class ChatController {
       // Get latest screenshot if available
       const latestScreenshot = await getLatestScreenshot(source);
       const finalImageData = latestScreenshot || imageData;
+
       await Promise.all([
         folderPath &&
           saveScreenshots === "true" &&
@@ -46,18 +54,18 @@ export class ChatController {
           res,
           message,
           history,
-          mode,
-          type,
+          Modes.EXPLORE,
+          type as ExploreActionTypes,
           finalImageData,
           source,
           omniParserResult,
         ),
       ]);
     } catch (error) {
-      console.error("Chat message error:", error);
+      console.error("Explore message error:", error);
       res.status(500).json({
         status: "error",
-        message: "Error processing chat message",
+        message: "Error processing explore message",
       });
     }
   }
@@ -65,7 +73,15 @@ export class ChatController {
   static healthCheck(_req: Request, res: Response): void {
     res.json({
       status: "ok",
-      message: "Hurray.. Server is running",
+      message: "Explore mode is running",
     });
+  }
+
+  static async handleExploreCurrentPath(_req: Request, res: Response) {
+    const source = _req.query.source as StreamingSource | undefined;
+    if (!source) return;
+    const url = await getCurrentUrlBasedOnSource(source);
+    console.log("Determined URL:", url);
+    res.json({ url });
   }
 }

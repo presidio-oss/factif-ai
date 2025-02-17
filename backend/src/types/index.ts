@@ -21,4 +21,15 @@ export interface StreamResponse {
   isPartial?: boolean;
   isComplete?: boolean;
   isError?: boolean;
+  imageData?: string;
+}
+
+export enum Modes {
+  EXPLORE = "explore",
+  REGRESSION = "regression",
+}
+
+export enum ExploreActionTypes {
+  ACTION = "action",
+  EXPLORE = "explore",
 }
