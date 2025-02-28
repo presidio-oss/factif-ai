@@ -160,8 +160,6 @@ export class PuppeteerService extends BaseStreamingService {
     await page.evaluate(() => {
       scrollPosition = window.scrollY;
       totalScroll = document.body.scrollHeight;
-      const element = document.getElementById("factifai-proxy-select");
-      console.log("=============== injecting element =============", element);
     }, null);
 
     return {

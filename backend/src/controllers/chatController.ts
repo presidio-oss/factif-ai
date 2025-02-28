@@ -11,7 +11,7 @@ export class ChatController {
       !ChatService.isProviderAvailable() &&
         ChatService.createProvider(Modes.REGRESSION);
       // Get data from request body
-      const { message, imageData, history, omniParserResult } = req.body;
+      const { message, history, omniParserResult } = req.body;
 
       // Get remaining params from query string
       const folderPath = req.query.folderPath as string;

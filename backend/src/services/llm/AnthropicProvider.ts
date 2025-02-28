@@ -218,7 +218,6 @@ export class AnthropicProvider implements LLMProvider {
       await this.processStreamResponse(stream, res);
       return true;
     } catch (error) {
-      console.log(error);
       this.sendStreamResponse(res, {
         message: "Error processing message re-trying",
         timestamp: Date.now(),

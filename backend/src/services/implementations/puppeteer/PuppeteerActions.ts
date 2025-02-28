@@ -32,26 +32,16 @@ export class PuppeteerActions {
         ) as Element;
         const { top } = element.getBoundingClientRect();
 
-        console.log("==========", element.tagName);
-
         if (top > window.innerHeight || top < window.scrollY) {
           element.scrollIntoView({ behavior: "smooth" });
         }
-        console.log(
-          top,
-          "==",
-          top > window.innerHeight || top < window.scrollY
-        );
+
         return {
           top,
           isSuccess: true,
           isConditionPassed: top > window.innerHeight || top < window.scrollY,
         };
       } catch (e) {
-        console.log(
-          "Error while clicking on element. Please check if the element is visible in the current viewport",
-          e
-        );
         return {
           isSuccess: false,
           message:
@@ -96,10 +86,10 @@ export class PuppeteerActions {
     if (!action) {
       throw new Error("Text is required for type action");
     }
-    if (!action.coordinate) {
+    if (!action.coordinate || !action.text) {
       return {
         status: "error",
-        message: "Coordinates are required for type action",
+        message: "Coordinates & text are required for type action",
       };
     }
     const coordinate = getCoordinate(action.coordinate as string);

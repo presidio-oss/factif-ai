@@ -15,7 +15,7 @@ class ActionController {
     res: Response,
   ) {
     try {
-      const { chatId, folderPath, source } = req.query;
+      const { source } = req.query;
       const { action } = req.body;
 
       if (!action || !source) {
