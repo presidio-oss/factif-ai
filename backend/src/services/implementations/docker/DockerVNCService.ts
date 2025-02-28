@@ -1,6 +1,6 @@
 import { BaseStreamingService } from "../../base/BaseStreamingService";
 import { ServiceConfig } from "../../../types/stream.types";
-import { ActionResponse } from "../../../types/action.types";
+import { ActionRequest, ActionResponse } from "../../../types/action.types";
 import path from "path";
 import crypto from "crypto";
 import { DockerCommands } from "./DockerCommands";
@@ -183,7 +183,10 @@ export class DockerVNCService extends BaseStreamingService {
     }
   }
 
-  async performAction(action: string, params?: any): Promise<ActionResponse> {
+  async performAction(
+    action: ActionRequest,
+    params?: any,
+  ): Promise<ActionResponse> {
     if (!this.isInitialized || !this.isConnected || !this.containerId) {
       return {
         status: "error",

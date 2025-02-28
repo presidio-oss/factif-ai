@@ -291,7 +291,7 @@ export class UIInteractionService {
     } else if (!event.ctrlKey && !event.altKey && !event.metaKey) {
       this.emitBrowserAction({
         action: "type",
-        params: { text: event.key },
+        params: { text: event.key, ...this.lastClickCoords },
       });
     }
 

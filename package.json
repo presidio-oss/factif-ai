@@ -1,7 +1,7 @@
 {
-  "name": "fullstack-typescript-app",
-  "version": "1.0.0",
-  "description": "Fullstack TypeScript application with React and Express",
+  "name": "Factifai",
+  "version": "1.1.0",
+  "description": "",
   "scripts": {
     "start": "npm run start:backend & npm run start:frontend",
     "start:frontend": "cd frontend && npm run dev",
@@ -11,8 +11,5 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "playwright": "^1.50.1"
-  }
+  "license": "ISC"
 }

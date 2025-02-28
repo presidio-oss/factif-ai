@@ -1,7 +1,7 @@
 import { DockerCommands } from "./DockerCommands";
 import { KeyMap, VNCActionParams } from "./DockerTypes";
 import { Server as SocketServer } from "socket.io";
-import { ActionResponse } from "../../../types/action.types";
+import { ActionRequest, ActionResponse } from "../../../types/action.types";
 
 export class DockerActions {
   private static io: SocketServer;
@@ -276,12 +276,12 @@ export class DockerActions {
 
   static async performAction(
     containerId: string,
-    action: string,
+    action: ActionRequest,
     params: VNCActionParams,
   ): Promise<ActionResponse> {
     try {
       let result: ActionResponse;
-      switch (action) {
+      switch (action.action) {
         case "click":
           if (params.x !== undefined && params.y !== undefined) {
             result = await DockerActions.click(containerId, params.x, params.y);
