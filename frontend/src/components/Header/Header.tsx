@@ -46,7 +46,7 @@ export const Header = () => {
             </Link>
             {isExploreMode && (
               <span
-                className={`text-sm font-medium transition-colors hover:text-white ${
+                className={`text-sm cursor-pointer font-medium transition-colors hover:text-white ${
                   showGraph ? "text-white" : "text-gray-400"
                 }`}
                 onClick={() => setShowGraph(!showGraph)}

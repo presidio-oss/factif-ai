@@ -62,7 +62,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     source?: StreamingSource,
     _mode: Modes = Modes.REGRESSION,
     type: ExploreActionTypes = ExploreActionTypes.EXPLORE,
-    currentPageUrl: string = "",
+    currentPageUrl: string = ""
   ): { role: "user" | "assistant"; content: string | any[] }[] {
     const formattedMessages: {
       role: "user" | "assistant";
@@ -74,7 +74,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
         type === ExploreActionTypes.ACTION
           ? this.getLastUserMessage(history)
           : "",
-        currentPageUrl,
+        currentPageUrl
       ),
     ];
 
@@ -123,7 +123,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
   buildMessageRequest(
     modelId: string,
     messages: any[],
-    stream: boolean = true,
+    stream: boolean = true
   ): any {
     const maxTokens =
       config.llm.anthropic.contextConfig?.modelContextWindows[modelId] || 8192;
@@ -138,7 +138,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
   async processStreamResponse(
     stream: any,
     res: Response,
-    imageData?: string,
+    imageData?: string
   ): Promise<void> {
     for await (const chunk of stream) {
       if (chunk.type === "content_block_delta" && chunk.delta?.text) {
@@ -179,7 +179,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     source?: StreamingSource,
     imageData?: string,
     omniParserResult?: OmniParserResult,
-    retryCount: number = config.retryAttemptCount,
+    retryCount: number = config.retryAttemptCount
   ): Promise<void> {
     console.log("is image available", !!imageData);
     type === ExploreActionTypes.EXPLORE &&
@@ -196,7 +196,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
         type,
         source,
         imageData,
-        omniParserResult,
+        omniParserResult
       );
       if (isRetrySuccessful) {
         return;
@@ -233,14 +233,14 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     type: ExploreActionTypes = ExploreActionTypes.EXPLORE,
     source?: StreamingSource,
     imageData?: string,
-    omniParserResult?: OmniParserResult,
+    omniParserResult?: OmniParserResult
   ): Promise<boolean> {
     console.log("Processing message with history length:", history.length);
     const USER_ROLE = "user";
     try {
       const modelId = this.getModelId();
       const currentPageUrl = await getCurrentUrlBasedOnSource(
-        source as StreamingSource,
+        source as StreamingSource
       );
       console.log(
         "Current page URL:",
@@ -248,7 +248,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
         "Source:",
         source,
         "Type:",
-        type,
+        type
       );
       // Format messages with history and image if present
       const formattedMessage = this.formatMessagesWithHistory(
@@ -258,7 +258,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
         source,
         mode,
         type,
-        currentPageUrl,
+        currentPageUrl
       );
       // If omni parser is enabled and we have results, add them to the last user message
       if (config.omniParser.enabled && omniParserResult) {
@@ -267,7 +267,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
 
       const messageRequest = this.buildMessageRequest(
         modelId,
-        formattedMessage,
+        formattedMessage
       );
       // Log the message request before sending
       logMessageRequest(messageRequest);
@@ -299,7 +299,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     action: ExploreActionTypes,
     source: StreamingSource,
     task: string,
-    currentPageUrl: string,
+    currentPageUrl: string
   ): {
     role: "user" | "assistant";
     content: string | any[];
@@ -338,7 +338,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
    * already been processed.
    */
   async generateComponentDescription(
-    source: StreamingSource,
+    source: StreamingSource
   ): Promise<boolean> {
     let pageUrl = await getCurrentUrlBasedOnSource(source);
     let screenshot = await getLatestScreenshot(source);
@@ -348,7 +348,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     const messageRequest = this.buildMessageRequest(
       this.getModelId(),
       [],
-      false,
+      false
     );
     messageRequest.messages.push({
       role: "user",
@@ -369,7 +369,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       `${new Date().getTime().toString()}`,
       screenshot,
       "./output",
-      convertInputToOutput((stream.content[0] as any)["text"]),
+      (stream.content[0] as any)["text"]
     );
     ExploreModeAnthropicProvider.pageRouter.delete(pageUrl);
     return true;

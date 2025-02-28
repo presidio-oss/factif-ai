@@ -26,6 +26,7 @@ export class PuppeteerActions {
     return Buffer.from(buffer).toString("base64");
   }
 
+
   static async getCurrentUrl(): Promise<string> {
     if (!PuppeteerActions.page) {
       throw new Error("Browser not launched");
@@ -73,8 +74,8 @@ export class PuppeteerActions {
         ],
         headless: "shell",
         defaultViewport: {
-          width: 900,
-          height: 600,
+          width: 1270,
+          height: 720,
         },
       });
 

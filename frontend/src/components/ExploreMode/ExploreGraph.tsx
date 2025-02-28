@@ -42,6 +42,7 @@ export function ExploreGraph() {
         fitView
         nodeTypes={nodeTypes}
         snapToGrid={true}
+        colorMode="dark"
       >
         <Controls />
         <Background />

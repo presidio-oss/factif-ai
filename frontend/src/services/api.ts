@@ -267,9 +267,9 @@ export const sendExploreChatMessage = async (
           clearTimeout(connectionTimeout);
 
           const chunk = decoder.decode(value);
-          console.log(chunk.split("\n"));
+
           const lines = chunk.split("\n").filter((line) => line.trim());
-          console.log("lines:", lines);
+
           for (const line of lines) {
             if (line.startsWith("data: ")) {
               try {

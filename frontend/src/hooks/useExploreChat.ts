@@ -261,11 +261,12 @@ export const useExploreChat = () => {
 
     if (processedExploreMessage.length > 0) {
       const url = await getCurrentUrl(streamingSource);
+      
       if (!url) return;
       if (!routeSet.has(url as string)) {
-        if (routeSet.size > 0 && checkTheNewRouteIsFromSameDomain(url, routeSet.keys().next().value as string)){
-          return;
-        }
+        // if (routeSet.size > 0 && checkTheNewRouteIsFromSameDomain(url, routeSet.keys().next().value as string)){
+        //   return;
+        // }
         routeSet.add(url as string);
         exploreQueue.current[url] = [];
         const nodeId = handleEdgeAndNodeCreation(url, imageData);

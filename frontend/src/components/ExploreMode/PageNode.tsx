@@ -15,7 +15,7 @@ export default memo(
           onConnect={(params) => console.log("handle onConnect", params)}
           isConnectable={isConnectable}
         />
-        <div className="w-36 p-2 rounded border bg-white">
+        <div className="w-36 p-2 rounded border border-content3 bg-background/95 text-white">
           {data.imageData && (
             <img
               src={data.imageData}
@@ -23,8 +23,8 @@ export default memo(
               className="w-full"
             />
           )}
-          <p className="break-words overflow-hidden text-sm">
-            <a href={data.label} className="text-xs" target="_blank">
+          <p className="break-words overflow-hidden">
+            <a href={data.label} className="block text-[7px] pt-2" target="_blank">
               {data.label}
             </a>
           </p>
