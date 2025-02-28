@@ -31,16 +31,20 @@ export class ChatController {
 
       // Get latest screenshot if available
       const latestScreenshot = await getLatestScreenshot(source);
-      const finalImageData = latestScreenshot || imageData;
+
       await Promise.all([
         folderPath &&
           saveScreenshots === "true" &&
-          saveScreenshot(finalImageData, folderPath, currentChatId),
+          saveScreenshot(
+            latestScreenshot,
+            folderPath,
+            currentChatId
+          ),
         folderPath &&
           TestcaseController.downloadTestcase(
             history,
             currentChatId,
-            folderPath,
+            folderPath
           ),
         ChatService.processMessage(
           res,
@@ -48,9 +52,9 @@ export class ChatController {
           history,
           mode,
           type,
-          finalImageData,
+          latestScreenshot,
           source,
-          omniParserResult,
+          omniParserResult
         ),
       ]);
     } catch (error) {
@@ -65,7 +69,7 @@ export class ChatController {
   static healthCheck(_req: Request, res: Response): void {
     res.json({
       status: "ok",
-      message: "Hurray.. Server is running",
+      message: "Hurray.. Server is running!",
     });
   }
 }

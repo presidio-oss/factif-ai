@@ -1,11 +1,14 @@
-import { Server as SocketServer } from 'socket.io';
-import { ActionResponse } from './action.types';
+import { Server as SocketServer } from "socket.io";
+import { ActionRequest, ActionResponse } from "./action.types";
 
 export interface StreamingService {
   initialize(url: string): Promise<ActionResponse>;
   startScreenshotStream(interval: number): void;
   stopScreenshotStream(): void;
-  performAction(action: string, params?: any): Promise<ActionResponse>;
+  performAction(
+    action: string | ActionRequest,
+    params?: any,
+  ): Promise<ActionResponse | string>;
   cleanup(): Promise<void>;
   takeScreenshot(): Promise<string | null>;
 }
@@ -15,7 +18,7 @@ export interface StreamAction {
   params?: any;
 }
 
-export type StreamingSource = 'chrome-puppeteer' | 'ubuntu-docker-vnc';
+export type StreamingSource = "chrome-puppeteer" | "ubuntu-docker-vnc";
 
 // Used by BaseStreamingService for browser console and screenshot streaming
 export interface ServiceConfig {

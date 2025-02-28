@@ -11,7 +11,6 @@ import {
   exploreModePrompt,
   getPerformActionPrompt,
 } from "../../prompts/explore-mode";
-import { PuppeteerActions } from "../implementations/puppeteer/PuppeteerActions";
 import { modernizeOutput } from "../../prompts/modernize-output.prompt";
 import {
   convertInputToOutput,
@@ -23,6 +22,7 @@ import {
   logMessageRequest,
 } from "../../utils/common.util";
 import { getLatestScreenshot } from "../../utils/screenshotUtils";
+import { IProcessedScreenshot } from "../interfaces/BrowserService";
 
 export class ExploreModeAnthropicProvider implements LLMProvider {
   static pageRouter = new Set<string>();
@@ -58,7 +58,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
   private formatMessagesWithHistory(
     currentMessage: string,
     history: ChatMessage[],
-    imageData?: string,
+    imageData?: IProcessedScreenshot,
     source?: StreamingSource,
     _mode: Modes = Modes.REGRESSION,
     type: ExploreActionTypes = ExploreActionTypes.EXPLORE,
@@ -138,7 +138,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
   async processStreamResponse(
     stream: any,
     res: Response,
-    imageData?: string
+    imageData?: IProcessedScreenshot
   ): Promise<void> {
     for await (const chunk of stream) {
       if (chunk.type === "content_block_delta" && chunk.delta?.text) {
@@ -177,7 +177,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     mode: Modes = Modes.REGRESSION,
     type: ExploreActionTypes = ExploreActionTypes.EXPLORE,
     source?: StreamingSource,
-    imageData?: string,
+    imageData?: IProcessedScreenshot,
     omniParserResult?: OmniParserResult,
     retryCount: number = config.retryAttemptCount
   ): Promise<void> {
@@ -232,24 +232,17 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     mode: Modes = Modes.REGRESSION,
     type: ExploreActionTypes = ExploreActionTypes.EXPLORE,
     source?: StreamingSource,
-    imageData?: string,
+    imageData?: IProcessedScreenshot,
     omniParserResult?: OmniParserResult
   ): Promise<boolean> {
-    console.log("Processing message with history length:", history.length);
+
     const USER_ROLE = "user";
     try {
       const modelId = this.getModelId();
       const currentPageUrl = await getCurrentUrlBasedOnSource(
         source as StreamingSource
       );
-      console.log(
-        "Current page URL:",
-        currentPageUrl,
-        "Source:",
-        source,
-        "Type:",
-        type
-      );
+
       // Format messages with history and image if present
       const formattedMessage = this.formatMessagesWithHistory(
         message,
@@ -277,7 +270,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       return true;
     } catch (error) {
       this.sendStreamResponse(res, {
-        message: "Error processing message re-tyring",
+        message: "Error processing message re-trying",
         timestamp: Date.now(),
         isError: false,
       });

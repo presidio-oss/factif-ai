@@ -14,7 +14,7 @@ export class MessagePatterns {
     completeTask:
       /<complete_task>[\s\n]*<result>([\s\S]*?)<\/result>(?:[\s\n]*<command>(.*?)<\/command>)?[\s\n]*<\/complete_task>/s,
     performAction:
-      /<perform_action>[\s\S]*?<action>(.*?)<\/action>(?:[\s\S]*?<url>(.*?)<\/url>)?(?:[\s\S]*?<coordinate>(.*?)<\/coordinate>)?(?:[\s\S]*?<text>(.*?)<\/text>)?(?:[\s\S]*?<key>(.*?)<\/key>)?[\s\S]*?<\/perform_action>/s,
+      /<perform_action>[\s\S]*?<action>(.*?)<\/action>(?:[\s\S]*?<url>(.*?)<\/url>)?(?:[\s\S]*?<coordinate>(.*?)<\/coordinate>)?(?:[\s\S]*?<text>(.*?)<\/text>)?(?:[\s\S]*?<key>(.*?)<\/key>)?(?:[\s\S]*?<about_this_action>(.*?)<\/about_this_action>)?(?:[\s\S]*?<marker_number>(.*?)<\/marker_number>)?[\s\S]*?<\/perform_action>/s,
     actionResult:
       /<perform_action_result>[\s\S]*?<action_status>(success|error)<\/action_status>[\s\S]*?<action_message>(.*?)<\/action_message>(?:[\s\S]*?<screenshot>(.*?)<\/screenshot>)?(?:[\s\S]*?<omni_parser>(.*?)<\/omni_parser>)?[\s\S]*?<\/perform_action_result>/s,
     exploreOutput:

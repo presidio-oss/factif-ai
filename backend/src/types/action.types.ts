@@ -1,4 +1,5 @@
 import { StreamingSource } from "./stream.types";
+import { IClickableElement } from "../services/interfaces/BrowserService";
 
 export interface ActionRequest {
   action: string;
@@ -7,6 +8,8 @@ export interface ActionRequest {
   text?: string;
   key?: string;
   source: StreamingSource;
+  elements?: IClickableElement[];
+  marker?: number;
 }
 
 export interface OmniParserResult {
@@ -18,9 +21,9 @@ export interface OmniParserResult {
 }
 
 export interface ActionResponse {
-  status: 'success' | 'error';
+  status: "success" | "error";
   message: string;
-  screenshot: string; // Base64 encoded screenshot
+  screenshot?: string; // Base64 encoded screenshot
   screenshotPath?: string; // Optional path if screenshot was saved
   error?: string;
   omniParserResult?: OmniParserResult;

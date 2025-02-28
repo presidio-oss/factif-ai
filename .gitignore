@@ -1,3 +1,79 @@
 .idea
 /logs
 .hai/
+# Dependencies
+frontend/node_modules/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Environment variables
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Build output
+frontend/dist/
+frontend/dist-ssr/
+frontend/build/
+
+# TypeScript
+frontend/*.tsbuildinfo
+
+# Vite
+frontend/.vite/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+frontend/coverage/
+
+# Logs
+frontend/logs/
+*.log
+
+
+
+# Dependencies
+backend/node_modules/
+backend/npm-debug.log*
+backend/yarn-debug.log*
+backend/yarn-error.log*
+
+# Environment variables
+backend/.env
+backend/.env.local
+backend/.env.development.local
+backend/.env.test.local
+backend/.env.production.local
+
+# Build output
+backend/dist/
+backend/build/
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+backend/logs/
+logs
+backend/output
+node_modules

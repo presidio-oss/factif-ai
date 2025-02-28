@@ -10,6 +10,7 @@ import { ExploreModeAnthropicProvider } from "./llm/ExploreModeAnthropicProvider
 import { OpenAIProvider } from "./llm/OpenAIProvider";
 import { GeminiProvider } from "./llm/GeminiProvider";
 import { AnthropicProvider } from "./llm/AnthropicProvider";
+import { IProcessedScreenshot } from "./interfaces/BrowserService";
 
 export class ChatService {
   private static provider: LLMProvider;
@@ -54,9 +55,9 @@ export class ChatService {
     history: ChatMessage[] = [],
     mode: Modes = Modes.REGRESSION,
     type: ExploreActionTypes = ExploreActionTypes.EXPLORE,
-    imageData?: string,
+    imageData: IProcessedScreenshot,
     source?: StreamingSource,
-    omniParserResult?: OmniParserResult,
+    omniParserResult?: OmniParserResult
   ): Promise<void> {
     // Get the current model based on provider
     const model = (() => {
@@ -96,7 +97,7 @@ export class ChatService {
         type,
         source,
         imageData,
-        omniParserResult,
+        omniParserResult
       );
     } catch (error) {
       console.error("Error streaming response:", error);

@@ -93,7 +93,7 @@ export const useChat = () => {
     imageData?: string,
     omniParserResult?: OmniParserResult,
   ) => {
-    // Prevent multiple simultaneous chat s
+    // Prevent multiple simultaneous chat messages
     if (isProcessing.current) return;
     isProcessing.current = true;
 
@@ -184,9 +184,9 @@ export const useChat = () => {
 
               console.log("Action result:", processedResponse.actionResult);
               await handleChatMessage(
-                processedResponse.actionResult as any,
+                processedResponse.actionResult,
                 imageData,
-                processedResponse.omniParserResult, // Pass the omniParserResult to the next call,
+                processedResponse.omniParserResult, // Pass the omniParserResult to the next call
               );
             } else {
               // Mark message as history even when there's no action

@@ -3,6 +3,7 @@ import { ChatMessage } from "../../types/chat.types";
 import { StreamingSource } from "../../types/stream.types";
 import { OmniParserResult } from "../../types/action.types";
 import { ExploreActionTypes, Modes } from "../../types";
+import { IProcessedScreenshot } from "../interfaces/BrowserService";
 
 export interface LLMProvider {
   streamResponse(
@@ -12,7 +13,7 @@ export interface LLMProvider {
     mode: Modes,
     type: ExploreActionTypes,
     source?: StreamingSource,
-    imageData?: string,
+    imageData?: IProcessedScreenshot,
     omniParserResult?: OmniParserResult,
   ): Promise<void>;
 }

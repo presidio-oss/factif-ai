@@ -1,3 +1,5 @@
+import { IProcessedScreenshot } from "../services/interfaces/BrowserService";
+
 export interface ErrorResponse {
   status: string;
   message: string;
@@ -21,7 +23,7 @@ export interface StreamResponse {
   isPartial?: boolean;
   isComplete?: boolean;
   isError?: boolean;
-  imageData?: string;
+  imageData?: IProcessedScreenshot;
 }
 
 export enum Modes {

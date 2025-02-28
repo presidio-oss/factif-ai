@@ -1,3 +1,9 @@
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import { Header } from "./components/Header/Header";
 import { Chat } from "./components/Chat/Chat";
 import { Preview } from "./components/Preview/Preview";
@@ -6,12 +12,6 @@ import { Explorer } from "./components/Explorer/Explorer";
 import ExploreMode from "./components/ExploreMode/ExploreMode";
 import { AppProvider } from "./contexts/AppContext";
 import { NextUIProvider } from "@nextui-org/react";
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
 import "./App.css";
 import { ExploreModeProvider } from "@/contexts/ExploreModeContext.tsx";
 

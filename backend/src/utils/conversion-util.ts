@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { IProcessedScreenshot } from "../services/interfaces/BrowserService";
 
 export const convertInputToOutput = (input: string): string => {
   // Extract title
@@ -62,7 +63,7 @@ export const convertInputToOutput = (input: string): string => {
  */
 export async function saveFileAndScreenshot(
   fileName: string,
-  screenshot: string | null,
+  screenshot: IProcessedScreenshot | null,
   directory: string,
   content: string,
 ): Promise<void> {
@@ -80,7 +81,7 @@ export async function saveFileAndScreenshot(
     if (screenshot) {
       // Save the screenshot as an image
       const screenshotPath = path.join(directory, `${fileName}.jpg`);
-      const base64Data = screenshot.replace(/^data:image\/jpeg;base64,/, ""); // Remove base64 header
+      const base64Data = screenshot.image.replace(/^data:image\/jpeg;base64,/, ""); // Remove base64 header
       fs.writeFileSync(screenshotPath, base64Data, "base64");
       console.log(`Screenshot saved at: ${screenshotPath}`);
     }
