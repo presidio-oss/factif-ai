@@ -5,8 +5,10 @@ import { TestcaseController } from "./testcaseController";
 import { getLatestScreenshot, saveScreenshot } from "../utils/screenshotUtils";
 import { ExploreActionTypes, Modes } from "../types";
 import { getCurrentUrlBasedOnSource } from "../utils/common.util";
+import { RouteClassifierService } from "../services/RouteClassifierService";
 
 export class ExploreController {
+  private static routeClassifierService = new RouteClassifierService();
   static async handleExploreMessage(
     req: Request,
     res: Response,
@@ -83,5 +85,46 @@ export class ExploreController {
     const url = await getCurrentUrlBasedOnSource(source);
     console.log("Determined URL:", url);
     res.json({ url });
+  }
+
+  /**
+   * Classify routes for graph visualization
+   * @param req Request with urls array to classify
+   * @param res Response with classification results
+   */
+  static async classifyRoutes(req: Request, res: Response): Promise<void> {
+    try {
+      const { routes } = req.body;
+      
+      if (!Array.isArray(routes) || routes.length === 0) {
+        res.status(400).json({
+          status: "error",
+          message: "Valid routes array is required",
+        });
+        return;
+      }
+
+      const classificationResults: Record<string, { category: string; description: string }> = {};
+      
+      // Process classifications in batches
+      const routeObjects = routes.map(url => ({ url }));
+      const classifications = await ExploreController.routeClassifierService.batchClassifyRoutes(routeObjects);
+      
+      // Convert Map to Record for JSON response
+      classifications.forEach((value, key) => {
+        classificationResults[key] = value;
+      });
+
+      res.json({
+        status: "success",
+        classifications: classificationResults
+      });
+    } catch (error) {
+      console.error("Route classification error:", error);
+      res.status(500).json({
+        status: "error",
+        message: "Error classifying routes",
+      });
+    }
   }
 }

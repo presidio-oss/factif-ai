@@ -10,4 +10,7 @@ router.get("/health", ExploreController.healthCheck);
 router.post("/message", ExploreController.handleExploreMessage);
 router.get("/current-path", ExploreController.handleExploreCurrentPath);
 
+// Route classification endpoint
+router.post("/classify-routes", ExploreController.classifyRoutes);
+
 export default router;

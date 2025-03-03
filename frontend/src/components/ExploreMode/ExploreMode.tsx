@@ -6,6 +6,7 @@ import { Explorer } from "../Explorer/Explorer";
 import { ExploreGraph } from "@/components/ExploreMode/ExploreGraph.tsx";
 import { useExploreModeContext } from "@/contexts/ExploreModeContext.tsx";
 import ErrorBoundary from "../ErrorBoundary/ErrorBoundary";
+import { ReactFlowProvider } from "@xyflow/react";
 
 const ExploreMode: React.FC = () => {
   const { showGraph } = useExploreModeContext();
@@ -21,7 +22,9 @@ const ExploreMode: React.FC = () => {
         <div className="flex-1 flex flex-col min-w-0 relative">
           {showGraph && (
             <div className="flex-1 min-h-0 overflow-hidden absolute inset-0 bg-white z-20">
-              <ExploreGraph />
+              <ReactFlowProvider>
+                <ExploreGraph />
+              </ReactFlowProvider>
             </div>
           )}
           <div className="flex-1 min-h-0 overflow-hidden">
