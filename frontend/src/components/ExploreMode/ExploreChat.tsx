@@ -4,7 +4,7 @@ import { ChatMessages } from "../Chat/ChatMessages";
 import { useAppContext } from "@/contexts/AppContext";
 import { useExploreChat } from "@/hooks/useExploreChat";
 import { Button } from "@nextui-org/react";
-import { Suggestions } from "../Chat/components/Suggestions";
+import { Suggestion, Suggestions } from "../Chat/components/Suggestions";
 
 export const ExploreChat = () => {
   const { currentChatId, setCurrentChatId, isChatStreaming, type } =
@@ -80,7 +80,12 @@ export const ExploreChat = () => {
             </div>
             {!hasUserInteraction && (
               <div className="absolute inset-0 flex items-center justify-center p-6">
-                <Suggestions onSendMessage={handleSendMessage} />
+                <Suggestions
+                  title="What would you like to explore?"
+                  footerText="or enter your own site you like to explore"
+                  suggestions={ExploreModeSuggestions}
+                  onSendMessage={handleSendMessage}
+                />
               </div>
             )}
           </div>
@@ -96,3 +101,18 @@ export const ExploreChat = () => {
     </div>
   );
 };
+
+export const ExploreModeSuggestions: Suggestion[] = [
+  {
+    type: "explore",
+    title: "Explore Wikipedia",
+    description: "Explore all the features and links on wikipedia.org",
+    prompt: "Explore wikipedia.org and document the features and links",
+  },
+  {
+    type: "explore",
+    title: "Explore Ecommerce Site",
+    description: "Explore all the features and links on saucedemo.com",
+    prompt: "Explore https://www.saucedemo.com/ and document the features and links",
+  },
+];
