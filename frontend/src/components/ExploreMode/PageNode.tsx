@@ -3,7 +3,7 @@ import { Handle, Position } from "@xyflow/react";
 import { INodeData } from "@/types/message.types.ts";
 
 export default memo(
-  ({ data, isConnectable }: { data: INodeData; isConnectable: boolean }) => {
+  ({ id, data, selected = false, isConnectable }: { id: string; data: INodeData; selected?: boolean; isConnectable?: boolean }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
 
@@ -60,13 +60,17 @@ export default memo(
           isConnectable={!!isConnectable}
         />
         <div
-          className="w-36 p-2 backdrop-blur-md rounded text-white border-gray-600 border-1 flex flex-col items-center justify-between gap-2"
+          className="w-36 p-2 backdrop-blur-md rounded text-white border-gray-600 border-1 flex flex-col items-center justify-between gap-2 transition-all duration-300"
           style={{
             backgroundColor: `${safeData.categoryColor}11`, // Very light background color
-            boxShadow: `0 2px 6px ${safeData.categoryColor}33`, // Subtle glow effect with category color
+            boxShadow: selected 
+              ? `0 0 10px 3px ${safeData.categoryColor}80, 0 0 15px ${safeData.categoryColor}40` // Strong glow when selected
+              : `0 2px 6px ${safeData.categoryColor}33`, // Subtle glow effect with category color
+            transform: selected ? 'scale(1.05)' : 'scale(1)',
+            zIndex: selected ? 10 : 1
           }}
         >
-          <div className="text-[8px] font-light px-1 rounded-sm text-white inline-block">
+          <div className="text-[10px] font-light px-1 rounded-sm text-white inline-block break-words truncate">
             {(() => {
               try {
                 // Try to extract path from URL
@@ -101,10 +105,10 @@ export default memo(
               <span className="text-xs text-gray-400">No image</span>
             </div>
           )}
-          <p className="break-words overflow-hidden">
+          <p className="break-words overflow-hidden truncate w-24">
             <a
               href={safeData.label}
-              className="block text-[7px] break-all"
+              className="block text-[8px] break-all"
               target="_blank"
             >
               {safeData.label || "No URL"}

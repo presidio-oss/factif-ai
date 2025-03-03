@@ -63,7 +63,7 @@ const getCategoryIcon = (category: string) => {
 // Get custom styles based on category
 const getHeaderStyle = (category: string) => {
   const baseStyle =
-    "font-bold text-lg p-1.5 flex items-center justify-between rounded-t-[4px]";
+    "font-bold text-lg p-1.5 flex items-center justify-between rounded-t-[8px]";
 
   switch (category.toLowerCase()) {
     case "product":
@@ -177,6 +177,7 @@ export function ExploreGraph() {
     Record<string, RouteCategory>
   >({});
   const [isClassifying, setIsClassifying] = useState<boolean>(false);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
   // Convert IExploredNode[] to Node[] with proper mapping and safety checks
   const convertToNodes = useCallback(
@@ -525,12 +526,12 @@ export function ExploreGraph() {
     // Update edges with curved lines and better overlap handling
     const updatedEdges = edges.map((edge) => ({
       ...edge,
-      type: "smoothstep", // Change to smoothstep for curved edges
+      type: "bezier", // Change to smoothstep for curved edges
       animated: true,
       markerEnd: {
         type: MarkerType.ArrowClosed,
       },
-      style: { stroke: "#555", strokeWidth: 2 },
+      style: { stroke: "#888", strokeWidth: 2 },
       curvature: 0.3, // Add curvature to make lines bend nicer
       // Add different offsets to edges with the same source/target to prevent overlapping
       sourceHandle: edge.sourceHandle || null,
@@ -634,9 +635,9 @@ export function ExploreGraph() {
             height,
             background: "transparent", // Background now handled by the GroupNode component
             zIndex: -1,
-            borderRadius: "10px",
-            border: "none",
+            borderRadius: "9px",
             cursor: "grab",
+            padding: '0px'
           },
           data: {
             label: category.toUpperCase(),
@@ -662,19 +663,35 @@ export function ExploreGraph() {
   useEffect(() => {
     // Keep the edges curved and offset to prevent overlap
     setEdges((edges) =>
-      edges.map((edge) => ({
-        ...edge,
-        type: "smoothstep",
-        animated: true,
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-        },
-        style: { stroke: "#555", strokeWidth: 2 },
-        // Use different styles for different categories
-        pathOptions: { offset: 15 },
-      })),
+      edges.map((edge) => {
+        const isConnectedToSelectedNode = 
+          selectedNode === edge.source || selectedNode === edge.target;
+        
+        return {
+          ...edge,
+          type: "bezier",
+          animated: true,
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+          },
+          style: isConnectedToSelectedNode 
+            ? { 
+                stroke: "#00BFFF", // Bright cyan color for highlighting
+                strokeWidth: 3,
+                filter: "drop-shadow(0 0 5px #00BFFF)",
+                transition: "all 0.3s ease"
+              } 
+            : { 
+                stroke: "#555", 
+                strokeWidth: 2,
+                transition: "all 0.3s ease"
+              },
+          // Use different styles for different categories
+          pathOptions: { offset: 15 },
+        };
+      }),
     );
-  }, [validNodes.length, edges.length]);
+  }, [validNodes.length, edges.length, selectedNode]);
 
   return (
     <div style={{ width: "100%", height: "100%" }}>
@@ -684,6 +701,12 @@ export function ExploreGraph() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeClick={(_, node) => {
+          // Only set selectedNode for pageNode types, not containers
+          if (node.type === 'pageNode') {
+            setSelectedNode(prev => prev === node.id ? null : node.id);
+          }
+        }}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         nodeTypes={nodeTypes}
