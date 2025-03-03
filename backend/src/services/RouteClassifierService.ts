@@ -9,7 +9,7 @@ export interface RouteCategory {
 
 export class RouteClassifierService {
   private anthropicProvider: AnthropicProvider;
-  
+
   // Cache to store classifications for faster response
   private classificationCache: Map<string, RouteCategory> = new Map();
 
@@ -24,13 +24,17 @@ export class RouteClassifierService {
    * @param pageContent The textual content of the page
    * @returns A promise that resolves to a RouteCategory
    */
-  async classifyRoute(url: string, pageTitle?: string, pageContent?: string): Promise<RouteCategory> {
+  async classifyRoute(
+    url: string,
+    pageTitle?: string,
+    pageContent?: string
+  ): Promise<RouteCategory> {
     // Check if the classification is already in the cache
     const cacheKey = url;
     if (this.classificationCache.has(cacheKey)) {
       return this.classificationCache.get(cacheKey)!;
     }
-    
+
     // Default category based on URL patterns, used as fallback
     const defaultCategory = this.getCategoryFromUrl(url);
     if (defaultCategory) {
@@ -41,11 +45,15 @@ export class RouteClassifierService {
     try {
       // Skip API call if no API key is configured
       if (!config.llm.anthropic.apiKey) {
-        console.log("No Anthropic API key configured, using URL pattern matching");
-        return this.getCategoryFromUrl(url) || { 
-          category: "uncategorized", 
-          description: "Classification skipped - no API key" 
-        };
+        console.log(
+          "No Anthropic API key configured, using URL pattern matching"
+        );
+        return (
+          this.getCategoryFromUrl(url) || {
+            category: "uncategorized",
+            description: "Classification skipped - no API key",
+          }
+        );
       }
 
       const client = new Anthropic({
@@ -58,8 +66,8 @@ You are analyzing a web page to classify it into a specific route category. Plea
 2. "description": A brief description of what this route is used for
 
 URL: ${url}
-${pageTitle ? `Page Title: ${pageTitle}` : ''}
-${pageContent ? `Page Content: ${pageContent?.substring(0, 500)}...` : ''}
+${pageTitle ? `Page Title: ${pageTitle}` : ""}
+${pageContent ? `Page Content: ${pageContent?.substring(0, 500)}...` : ""}
 
 Return ONLY a valid JSON object like this: {"category": "category-name", "description": "brief description"}
 `;
@@ -77,29 +85,44 @@ Return ONLY a valid JSON object like this: {"category": "category-name", "descri
         responseText = response.content[0].text;
       }
       const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
-      
+
       if (jsonMatch) {
         try {
           const classification = JSON.parse(jsonMatch[0]) as RouteCategory;
-          
+
           // Store in cache
           this.classificationCache.set(cacheKey, classification);
-          
+
           return classification;
         } catch (e) {
           console.error("Failed to parse route classification JSON:", e);
           const fallback = this.getCategoryFromUrl(url);
-          return fallback || { category: "uncategorized", description: "Could not classify route" };
+          return (
+            fallback || {
+              category: "uncategorized",
+              description: "Could not classify route",
+            }
+          );
         }
       } else {
         console.error("No JSON found in response:", responseText);
         const fallback = this.getCategoryFromUrl(url);
-        return fallback || { category: "uncategorized", description: "Could not classify route" };
+        return (
+          fallback || {
+            category: "uncategorized",
+            description: "Could not classify route",
+          }
+        );
       }
     } catch (error) {
       console.error("Error classifying route:", error);
       const fallback = this.getCategoryFromUrl(url);
-      return fallback || { category: "uncategorized", description: "Failed to classify" };
+      return (
+        fallback || {
+          category: "uncategorized",
+          description: "Failed to classify",
+        }
+      );
     }
   }
 
@@ -112,67 +135,134 @@ Return ONLY a valid JSON object like this: {"category": "category-name", "descri
       // Extract path from URL
       const urlObj = new URL(url);
       const path = urlObj.pathname.toLowerCase();
-      
+
       // Check various patterns in the URL to determine category
       if (path === "/" || path === "/index.html" || path === "/home") {
         return { category: "landing", description: "Main landing/home page" };
       }
-      
-      if (path.includes("/product") || path.includes("/item") || path.match(/\/p\/|\/products\//i)) {
-        return { category: "product", description: "Product page or product listing" };
+
+      if (
+        path.includes("/product") ||
+        path.includes("/item") ||
+        path.match(/\/p\/|\/products\//i)
+      ) {
+        return {
+          category: "product",
+          description: "Product page or product listing",
+        };
       }
-      
-      if (path.includes("/category") || path.includes("/collection") || path.includes("/shop") || path.includes("/catalog")) {
-        return { category: "category", description: "Product category or collection page" };
+
+      if (
+        path.includes("/category") ||
+        path.includes("/collection") ||
+        path.includes("/shop") ||
+        path.includes("/catalog")
+      ) {
+        return {
+          category: "category",
+          description: "Product category or collection page",
+        };
       }
-      
+
       if (path.includes("/cart") || path.includes("/basket")) {
         return { category: "cart", description: "Shopping cart page" };
       }
-      
-      if (path.includes("/checkout") || path.includes("/payment") || path.includes("/order")) {
-        return { category: "checkout", description: "Checkout or payment page" };
+
+      if (
+        path.includes("/checkout") ||
+        path.includes("/payment") ||
+        path.includes("/order")
+      ) {
+        return {
+          category: "checkout",
+          description: "Checkout or payment page",
+        };
       }
-      
-      if (path.includes("/login") || path.includes("/signin") || path.includes("/signup") || path.includes("/register") || path.includes("/auth")) {
+
+      if (
+        path.includes("/login") ||
+        path.includes("/signin") ||
+        path.includes("/signup") ||
+        path.includes("/register") ||
+        path.includes("/auth")
+      ) {
         return { category: "auth", description: "Authentication page" };
       }
-      
-      if (path.includes("/account") || path.includes("/profile") || path.includes("/user")) {
-        return { category: "profile", description: "User account or profile page" };
+
+      if (
+        path.includes("/account") ||
+        path.includes("/profile") ||
+        path.includes("/user")
+      ) {
+        return {
+          category: "profile",
+          description: "User account or profile page",
+        };
       }
-      
-      if (path.includes("/blog") || path.includes("/article") || path.includes("/post") || path.includes("/news")) {
-        return { category: "content", description: "Blog, article or content page" };
+
+      if (
+        path.includes("/blog") ||
+        path.includes("/article") ||
+        path.includes("/post") ||
+        path.includes("/news")
+      ) {
+        return {
+          category: "content",
+          description: "Blog, article or content page",
+        };
       }
-      
-      if (path.includes("/about") || path.includes("/company") || path.includes("/team")) {
-        return { category: "about", description: "About, company or team page" };
+
+      if (
+        path.includes("/about") ||
+        path.includes("/company") ||
+        path.includes("/team")
+      ) {
+        return {
+          category: "about",
+          description: "About, company or team page",
+        };
       }
-      
-      if (path.includes("/contact") || path.includes("/support") || path.includes("/help")) {
-        return { category: "support", description: "Contact, support or help page" };
+
+      if (
+        path.includes("/contact") ||
+        path.includes("/support") ||
+        path.includes("/help")
+      ) {
+        return {
+          category: "support",
+          description: "Contact, support or help page",
+        };
       }
-      
+
       if (path.includes("/search") || path.includes("/find")) {
         return { category: "search", description: "Search page" };
       }
-      
-      if (path.includes("/admin") || path.includes("/dashboard") || path.includes("/panel")) {
+
+      if (
+        path.includes("/admin") ||
+        path.includes("/dashboard") ||
+        path.includes("/panel")
+      ) {
         return { category: "admin", description: "Admin or dashboard page" };
       }
-      
+
       // Finalmouse specific patterns
       if (path.includes("/mice") || path.includes("/mousepads")) {
-        return { category: "product", description: "Mouse/mousepad product page" };
+        return {
+          category: "product",
+          description: "Mouse/mousepad product page",
+        };
       }
-      
+
       if (path.includes("/keyboard")) {
         return { category: "product", description: "Keyboard product page" };
       }
-      
+
       if (path.includes("/innovations") || path.includes("/technology")) {
-        return { category: "content", description: "Innovation/technology content page" };
+        return {
+          category: "content",
+          description: "Innovation/technology content page",
+        };
       }
 
       return null;
@@ -187,26 +277,29 @@ Return ONLY a valid JSON object like this: {"category": "category-name", "descri
    * @param routes Array of objects containing URL and optional content
    * @returns A promise that resolves to a Map of URLs to RouteCategories
    */
-  async batchClassifyRoutes(routes: { url: string; pageTitle?: string; pageContent?: string }[]): Promise<Map<string, RouteCategory>> {
+  async batchClassifyRoutes(
+    routes: { url: string; pageTitle?: string; pageContent?: string }[]
+  ): Promise<Map<string, RouteCategory>> {
     const results = new Map<string, RouteCategory>();
-    
+
     // Process routes in batches to avoid rate limiting
     const batchSize = 5;
     for (let i = 0; i < routes.length; i += batchSize) {
       const batch = routes.slice(i, i + batchSize);
-      const promises = batch.map(route => 
-        this.classifyRoute(route.url, route.pageTitle, route.pageContent)
-          .then(category => {
+      const promises = batch.map((route) =>
+        this.classifyRoute(route.url, route.pageTitle, route.pageContent).then(
+          (category) => {
             results.set(route.url, category);
-          })
+          }
+        )
       );
-      
+
       await Promise.all(promises);
     }
-    
+
     return results;
   }
-  
+
   /**
    * Clear the classification cache
    */
