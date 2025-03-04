@@ -370,14 +370,13 @@ export const useExploreChat = () => {
         });
 
       isProcessing.current = false;
-      console.log("====", fullResponse);
 
       if (fullResponse.includes("<complete_task>")) {
         setType("explore");
       }
 
       await handleExploreMessage(
-        processedResponse.text,
+        processedResponse.actionResult ? processedResponse.actionResult : processedResponse.text,
         fullResponse.includes("<complete_task>") ? "explore" : "action",
         imageData,
         processedResponse.omniParserResult,

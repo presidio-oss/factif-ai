@@ -337,11 +337,6 @@ export class UIInteractionService {
   private emitBrowserAction(action: BrowserAction) {
     const socket = SocketService.getInstance().getSocket();
     if (socket) {
-      console.log(
-        "============  Sending browser action: ",
-        action,
-        new Date().toLocaleTimeString(),
-      );
       socket.emit("browser-action", action);
     }
   }
