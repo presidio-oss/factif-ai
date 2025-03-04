@@ -93,13 +93,16 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       formattedMessages.push({
         role: "user",
         content: [
-          { type: "text", text: currentMessage },
+          {type: "text", text: currentMessage},
           {
             type: "image",
             source: {
               type: "base64",
-              media_type: "image/jpeg",
-              data: imageData,
+              media_type: "image/png",
+              data: imageData.originalImage.replace(
+                /^data:image\/png;base64,/,
+                ""
+              ),
             },
           },
         ],
@@ -269,6 +272,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       await this.processStreamResponse(stream, res, imageData);
       return true;
     } catch (error) {
+      console.log(error)
       this.sendStreamResponse(res, {
         message: "Error processing message re-trying",
         timestamp: Date.now(),
@@ -351,8 +355,8 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
           type: "image",
           source: {
             type: "base64",
-            media_type: "image/jpeg",
-            data: screenshot,
+            media_type: "image/png",
+            data: screenshot.originalImage.replace(/^data:image\/png;base64,/, ""),
           },
         },
       ],
