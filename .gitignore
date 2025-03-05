@@ -1,29 +1,26 @@
-.idea
-/logs
-.hai/
 # Dependencies
-frontend/node_modules/
-frontend/npm-debug.log*
-frontend/yarn-debug.log*
-frontend/yarn-error.log*
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Environment variables
-frontend/.env
-frontend/.env.local
-frontend/.env.development.local
-frontend/.env.test.local
-frontend/.env.production.local
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Build output
-frontend/dist/
-frontend/dist-ssr/
-frontend/build/
+dist/
+dist-ssr/
+build/
 
 # TypeScript
-frontend/*.tsbuildinfo
+*.tsbuildinfo
 
 # Vite
-frontend/.vite/
+.vite/
 
 # IDE
 .idea/
@@ -36,44 +33,15 @@ frontend/.vite/
 Thumbs.db
 
 # Coverage
-frontend/coverage/
+coverage/
 
 # Logs
-frontend/logs/
+logs/
 *.log
+/logs
 
-
-
-# Dependencies
-backend/node_modules/
-backend/npm-debug.log*
-backend/yarn-debug.log*
-backend/yarn-error.log*
-
-# Environment variables
-backend/.env
-backend/.env.local
-backend/.env.development.local
-backend/.env.test.local
-backend/.env.production.local
-
-# Build output
-backend/dist/
-backend/build/
-
-# TypeScript
-*.tsbuildinfo
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-backend/logs/
-logs
+# Backend specific
 backend/output
-node_modules
+
+# Tools
+.hai/

@@ -185,7 +185,7 @@ export class DockerVNCService extends BaseStreamingService {
 
   async performAction(
     action: ActionRequest,
-    params?: any,
+    params?: any
   ): Promise<ActionResponse> {
     if (!this.isInitialized || !this.isConnected || !this.containerId) {
       return {

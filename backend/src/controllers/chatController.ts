@@ -38,7 +38,7 @@ export class ChatController {
           saveScreenshot(
             latestScreenshot,
             folderPath,
-            currentChatId
+            currentChatId,
           ),
         folderPath &&
           TestcaseController.downloadTestcase(

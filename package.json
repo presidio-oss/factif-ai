@@ -7,7 +7,9 @@
     "start:frontend": "cd frontend && npm run dev",
     "start:backend": "cd backend && npm run dev",
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
-    "build": "cd backend && npm run build && cd ../frontend && npm run build"
+    "build": "cd backend && npm run build && cd ../frontend && npm run build",
+    "changeset": "npx @changesets/cli",
+    "changeset-version": "npm run changeset version"
   },
   "keywords": [],
   "author": "",

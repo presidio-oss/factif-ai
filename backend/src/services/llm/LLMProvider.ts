@@ -2,8 +2,8 @@ import { Response } from "express";
 import { ChatMessage } from "../../types/chat.types";
 import { StreamingSource } from "../../types/stream.types";
 import { OmniParserResult } from "../../types/action.types";
-import { ExploreActionTypes, Modes } from "../../types";
 import { IProcessedScreenshot } from "../interfaces/BrowserService";
+import { ExploreActionTypes, Modes } from "../../types";
 
 export interface LLMProvider {
   streamResponse(
@@ -14,6 +14,6 @@ export interface LLMProvider {
     type: ExploreActionTypes,
     source?: StreamingSource,
     imageData?: IProcessedScreenshot,
-    omniParserResult?: OmniParserResult,
+    omniParserResult?: OmniParserResult
   ): Promise<void>;
 }

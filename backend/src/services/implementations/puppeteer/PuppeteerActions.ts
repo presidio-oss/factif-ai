@@ -143,7 +143,7 @@ export class PuppeteerActions {
 
   static async keyPress(
     page: Page,
-    action: ActionRequest,
+    action: ActionRequest
   ): Promise<ActionResponse> {
     if (!action.key)
       return {
