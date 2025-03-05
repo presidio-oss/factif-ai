@@ -13,6 +13,15 @@ import { useExploreModeContext } from "@/contexts/ExploreModeContext.tsx";
 import { createEdgeOrNode } from "@/utils/graph.util.ts";
 import { StreamingSource } from "@/types/api.types.ts";
 
+// Interface for screenshot data structure
+interface IProcessedScreenshot {
+  image: string;
+  inference?: any[];
+  totalScroll?: number;
+  scrollPosition?: number;
+  originalImage?: string;
+}
+
 export const useExploreChat = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [latestOmniParserResult, setLatestOmniParserResult] =
@@ -133,18 +142,31 @@ export const useExploreChat = () => {
 
   const createConstructNode = (
     currentNodeId: string,
-    data: { label: string; imageData?: string },
+    data: { label: string; imageData?: string | IProcessedScreenshot },
   ) => {
     const currentNodelCount = exploreGraphData.current.nodes.length;
+
+    // Process image data based on type
+    let processedImageData;
+    if (data.imageData) {
+      if (typeof data.imageData === "string") {
+        // If it's already a string, make sure it has the data URI prefix
+        processedImageData = data.imageData.startsWith("data:")
+          ? data.imageData
+          : `data:image/png;base64,${data.imageData}`;
+      } else if (typeof data.imageData === "object" && data.imageData.image) {
+        // If it's a screenshot object, extract the base64 image
+        processedImageData = `${data.imageData.image}`;
+      }
+    }
+
     exploreGraphData.current.nodes.push({
       id: currentNodeId,
       position: { x: 200, y: currentNodelCount * 100 },
       data: {
         label: data.label,
         edges: [],
-        imageData: data.imageData
-          ? `data:image/png;base64,${data.imageData}`
-          : undefined,
+        imageData: processedImageData,
       },
       type: "pageNode",
     });
@@ -175,13 +197,62 @@ export const useExploreChat = () => {
     localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
   };
 
-  const handleEdgeAndNodeCreation = (url: string, imageData?: string) => {
+  const handleEdgeAndNodeCreation = (
+    url: string,
+    imageData?: string | IProcessedScreenshot,
+  ) => {
     const canCreateNode = createEdgeOrNode(exploreGraphData.current.nodes, url);
     const nodeId = !canCreateNode.createNode
       ? (canCreateNode.node?.id as string)
       : uuid();
-    canCreateNode.createNode &&
+
+    // Check if this might be the first node (homepage)
+    const isFirstNode = exploreGraphData.current.nodes.length === 0;
+
+    if (canCreateNode.createNode) {
+      // Log for debugging first node issue
+      if (isFirstNode) {
+        console.log("Creating first node (homepage):", {
+          url,
+          hasImageData: !!imageData,
+          imageDataType: imageData ? typeof imageData : "undefined",
+        });
+      }
+
       createConstructNode(nodeId, { label: url, imageData });
+    } else if (
+      isFirstNode &&
+      !canCreateNode.node?.data.imageData &&
+      imageData
+    ) {
+      // Special case: If we're not creating a new node because it already exists,
+      // but it's the first node and doesn't have image data, update it with the image
+      console.log("Updating first node with missing image data");
+      exploreGraphData.current.nodes = exploreGraphData.current.nodes.map(
+        (node) => {
+          if (node.id === nodeId) {
+            let processedImageData;
+            if (typeof imageData === "string") {
+              processedImageData = imageData.startsWith("data:")
+                ? imageData
+                : `data:image/png;base64,${imageData}`;
+            } else if (typeof imageData === "object" && imageData.image) {
+              processedImageData = `data:image/png;base64,${imageData.image}`;
+            }
+
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                imageData: processedImageData,
+              },
+            };
+          }
+          return node;
+        },
+      );
+      setGraphData(exploreGraphData.current);
+    }
 
     if (currentlyExploring.current) {
       createEdge(
@@ -250,7 +321,7 @@ export const useExploreChat = () => {
     fullResponse: string,
     parent: { url: string; id: string; nodeId: string } | null = null,
     streamingSource: StreamingSource,
-    imageData?: string,
+    imageData?: string | IProcessedScreenshot,
   ) => {
     const processedExploreMessage =
       MessageProcessor.processExploreMessage(fullResponse) || [];
@@ -308,7 +379,7 @@ export const useExploreChat = () => {
   const handleMessageCompletion = async (
     messageId: string,
     fullResponse: string,
-    imageData?: string,
+    imageData?: string | IProcessedScreenshot,
     _omniParserResult?: OmniParserResult,
   ) => {
     if (activeMessageId.current !== messageId) return;
@@ -357,7 +428,9 @@ export const useExploreChat = () => {
       }
 
       await handleExploreMessage(
-        processedResponse.actionResult ? processedResponse.actionResult : processedResponse.text,
+        processedResponse.actionResult
+          ? processedResponse.actionResult
+          : processedResponse.text,
         fullResponse.includes("<complete_task>") ? "explore" : "action",
         imageData,
         processedResponse.omniParserResult,
@@ -376,7 +449,9 @@ export const useExploreChat = () => {
     }
   };
 
-  const onGettingExploredMode = async (imageData: string | undefined) => {
+  const onGettingExploredMode = async (
+    imageData?: string | IProcessedScreenshot,
+  ) => {
     const nextElementToVisit = getNextToExplore();
     console.log("nextElementToVisit ===>", nextElementToVisit);
     isProcessing.current = false;
@@ -425,7 +500,7 @@ export const useExploreChat = () => {
   const handleExploreMessage = async (
     currentMessage: string,
     type: string,
-    imageData?: string,
+    imageData?: string | IProcessedScreenshot,
     omniParserResult?: OmniParserResult,
   ) => {
     if (isProcessing.current) return;
@@ -438,9 +513,19 @@ export const useExploreChat = () => {
     let fullResponse = "";
 
     try {
+      // Convert imageData to string if it's an IProcessedScreenshot object
+      let processedImageData: string | undefined;
+      if (imageData) {
+        if (typeof imageData === "string") {
+          processedImageData = imageData;
+        } else if (imageData.image) {
+          processedImageData = imageData.image;
+        }
+      }
+
       await sendExploreChatMessage(
         currentMessage,
-        imageData,
+        processedImageData,
         messagesRef.current.filter((msg) => !msg.isPartial),
         type,
         folderPath,
