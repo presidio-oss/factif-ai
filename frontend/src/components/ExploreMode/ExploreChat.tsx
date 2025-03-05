@@ -107,7 +107,7 @@ export const ExploreModeSuggestions: Suggestion[] = [
     type: "explore",
     title: "Explore Wikipedia",
     description: "Explore all the features and links on wikipedia.org",
-    prompt: "Explore wikipedia.org and document the features and links",
+    prompt: "Explore https://wikipedia.org and document the features and links",
   },
   {
     type: "explore",

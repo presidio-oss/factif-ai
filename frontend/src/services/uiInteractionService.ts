@@ -24,6 +24,14 @@ export class UIInteractionService {
   private lastClickTime: number = 0;
   private lastClickCoords: { x: number; y: number } | null = null;
 
+  /**
+   * Check if the browser is currently started
+   * @returns boolean indicating if browser is running
+   */
+  isBrowserStarted(): boolean {
+    return this.browserStarted;
+  }
+
   private constructor() {
     this.consoleService = ConsoleService.getInstance();
   }
@@ -70,6 +78,8 @@ export class UIInteractionService {
       if (this.currentUrl) {
         params.url = this.currentUrl;
         socketService.emit("start-stream", params);
+        // Notify URL change to update URL bar
+        this.notifyUrlChange(this.currentUrl);
       }
     } else {
       socketService.emit("start-stream", { source: this.currentSource });
@@ -177,7 +187,8 @@ export class UIInteractionService {
     console.log("** Source change:", newSource, url);
     this.currentSource = newSource;
     if (url) {
-      this.currentUrl = url;
+      // Set current URL and notify subscribers to update the UI
+      this.notifyUrlChange(url);
     }
     const socketService = SocketService.getInstance();
     const socket = socketService.getSocket();

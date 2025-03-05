@@ -74,10 +74,11 @@ export default memo(
           style={{
             backgroundColor: `${safeData.categoryColor}11`, // Very light background color
             boxShadow: selected
-              ? `0 0 10px 3px ${safeData.categoryColor}80, 0 0 15px ${safeData.categoryColor}40` // Strong glow when selected
+              ? `0 0 0px -10px ${safeData.categoryColor}80, 0 0 15px ${safeData.categoryColor}40` // Strong glow when selected
               : `0 2px 6px ${safeData.categoryColor}33`, // Subtle glow effect with category color
             transform: selected ? "scale(1.05)" : "scale(1)",
             zIndex: selected ? 10 : 1,
+            filter: selected ? "brightness(1.3)" : "revert"
           }}
         >
           <div className="text-[10px] font-light px-1 rounded-sm text-white inline-block break-words truncate">

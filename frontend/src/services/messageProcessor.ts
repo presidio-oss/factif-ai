@@ -33,6 +33,44 @@ export class MessageProcessor {
 
     if (action) {
       try {
+        // If action is not "launch" but we detect a URL in the message,
+        // we should launch the browser first
+        if (action.action !== "launch" && 
+            (chunk.includes("http://") || chunk.includes("https://") || 
+             /\b[a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)\b/i.test(chunk))) {
+          
+          // Extract URL from the message
+          let urlMatch = chunk.match(/(https?:\/\/[^\s'"]+)/i);
+          
+          // If no http/https URL, try to detect domain names like example.com
+          if (!urlMatch) {
+            urlMatch = chunk.match(/\b([a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)[^\s'"]*)\b/i);
+            if (urlMatch) {
+              // Prepend https:// to the domain
+              urlMatch[1] = `https://${urlMatch[1]}`;
+            }
+          }
+          if (urlMatch && urlMatch[1]) {
+            console.log("Auto-launching browser with URL:", urlMatch[1]);
+            
+            // Create a launch action and execute it first
+            const launchAction = {
+              type: "perform_action",
+              action: "launch",
+              url: urlMatch[1],
+            };
+            
+            try {
+              MessageProcessor.setHasActiveAction?.(true);
+              await executeAction(launchAction, source);
+              console.log("Browser launched automatically");
+            } catch (error) {
+              console.error("Failed to auto-launch browser:", error);
+              // Continue with original action even if auto-launch failed
+            }
+          }
+        }
+        
         MessageProcessor.setHasActiveAction?.(true);
         const response = await executeAction(action, source);
         MessageProcessor.setHasActiveAction?.(false);

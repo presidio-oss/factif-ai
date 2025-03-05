@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { getCurrentUrl, sendExploreChatMessage } from "../services/api";
+import { getCurrentUrl, executeAction, sendExploreChatMessage } from "../services/api";
 import { ChatMessage, OmniParserResult } from "../types/chat.types";
 import { useAppContext } from "../contexts/AppContext";
 import { MessageProcessor } from "../services/messageProcessor";
+import SocketService from "../services/socketService";
+import UIInteractionService from "../services/uiInteractionService";
 import {
   IExploredClickableElement,
   IExploreGraphData,
@@ -568,6 +570,68 @@ export const useExploreChat = () => {
     });
 
     if (sendToBackend) {
+      // Check if message contains a URL and is an explore request
+      const containsUrl = /(https?:\/\/[^\s'"]+)/i.test(message) || /\b[a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)\b/i.test(message);
+      const isExploreRequest = message.toLowerCase().includes("explore") || type === "explore";
+      
+      // If this seems to be an explore request with a URL, ensure browser is launched
+      if (isExploreRequest && containsUrl) {
+        try {
+          // Extract the URL from the message
+          let urlMatch = message.match(/(https?:\/\/[^\s'"]+)/i);
+          
+          // If no http/https URL, try to detect domain names like example.com
+          if (!urlMatch) {
+            urlMatch = message.match(/\b([a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)[^\s'"]*)\b/i);
+            if (urlMatch) {
+              // Prepend https:// to the domain
+              urlMatch[1] = `https://${urlMatch[1]}`;
+            }
+          }
+          if (urlMatch && urlMatch[1]) {
+            console.log("Auto-launching browser for explore request with URL:", urlMatch[1]);
+            
+            const socketService = SocketService.getInstance();
+            const socket = socketService.getSocket();
+            
+            // Check if we have a socket but need to auto-launch the browser
+            if (socket) {
+              // Launch the browser with the extracted URL
+              const launchAction = {
+                type: "perform_action",
+                action: "launch",
+                url: urlMatch[1],
+              };
+              
+              try {
+                setHasActiveAction?.(true);
+                const response = await executeAction(launchAction, streamingSource);
+                console.log("Browser auto-launched for explore request");
+                
+                // After launching, explicitly set the URL in UIInteractionService
+                if (response.status === "success") {
+                  // Set the URL in UIInteractionService to update the URL bar
+                  UIInteractionService.getInstance().handleSourceChange(
+                    streamingSource, 
+                    urlMatch[1]
+                  );
+                }
+                
+                // Wait briefly to ensure the browser is ready
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              } catch (error) {
+                console.error("Failed to auto-launch browser for explore:", error);
+                // Continue with the message even if auto-launch failed
+              } finally {
+                setHasActiveAction?.(false);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error in auto-launch logic:", error);
+        }
+      }
+      
       await handleExploreMessage(message, type, imageData, undefined);
       setLatestOmniParserResult(null);
     }
