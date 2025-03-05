@@ -163,7 +163,7 @@ export const useExploreChat = () => {
       source: sourceId,
       target: targetId,
       sourceHandle: edgeId,
-      type: "step",
+      type: "bezier",
       label,
     });
     exploreGraphData.current.nodes.map((node) => {
@@ -286,25 +286,6 @@ export const useExploreChat = () => {
       : null;
   };
 
-  const checkTheNewRouteIsFromSameDomain = (
-    newRoute: string,
-    existingRoute: string,
-  ) => {
-    try {
-      const match = (
-        newRoute.match(/^(?:https?:\/\/)?(?:www\.)?([^\/\n]+)/) as Array<string>
-      )[1];
-      const existingDomain = (
-        existingRoute.match(
-          /^(?:https?:\/\/)?(?:www\.)?([^\/\n]+)/,
-        ) as Array<string>
-      )[1];
-      return match === existingDomain;
-    } catch (e) {
-      return false;
-    }
-  };
-
   const getNextToExplore = () => {
     const route =
       exploreRoute.current.length > 0 ? exploreRoute.current[0] : null;
@@ -409,7 +390,7 @@ export const useExploreChat = () => {
         isUser: true,
         isHistory: false,
       });
-      await handleExploreMessage(message, "action", imageData);
+      await handleExploreMessage(message, "action", imageData, undefined);
     } else {
       setIsChatStreaming(false);
     }
@@ -502,7 +483,7 @@ export const useExploreChat = () => {
     });
 
     if (sendToBackend) {
-      await handleExploreMessage(message, type, imageData);
+      await handleExploreMessage(message, type, imageData, undefined);
       setLatestOmniParserResult(null);
     }
   };

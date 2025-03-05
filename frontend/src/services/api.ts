@@ -259,7 +259,7 @@ export const sendExploreChatMessage = async (
           const { done, value } = await reader.read();
 
           if (done) {
-            onComplete();
+            onComplete(imageData);
             break;
           }
 
