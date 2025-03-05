@@ -23,9 +23,22 @@ import {
 } from "../../utils/common.util";
 import { getLatestScreenshot } from "../../utils/screenshotUtils";
 import { IProcessedScreenshot } from "../interfaces/BrowserService";
+import { PuppeteerService } from "../implementations/puppeteer/PuppeteerService";
+
+// Interface for page metadata
+interface PageMetadata {
+  title?: string;
+  viewportWidth?: number;
+  viewportHeight?: number;
+  language?: string;
+  description?: string;
+  totalScrollHeight?: number;
+  currentScrollPosition?: number;
+}
 
 export class ExploreModeAnthropicProvider implements LLMProvider {
-  static pageRouter = new Set<string>();
+  static pageRouter = new Set<string>(); // Tracks visited page URLs
+  static visitedPagesCount = 0; // Tracks number of unique pages visited
 
   private client: Anthropic | AnthropicBedrock;
 
@@ -93,7 +106,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       formattedMessages.push({
         role: "user",
         content: [
-          {type: "text", text: currentMessage},
+          { type: "text", text: currentMessage },
           {
             type: "image",
             source: {
@@ -238,7 +251,6 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     imageData?: IProcessedScreenshot,
     omniParserResult?: OmniParserResult
   ): Promise<boolean> {
-
     const USER_ROLE = "user";
     try {
       const modelId = this.getModelId();
@@ -272,7 +284,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       await this.processStreamResponse(stream, res, imageData);
       return true;
     } catch (error) {
-      console.log(error)
+      console.log(error);
       this.sendStreamResponse(res, {
         message: "Error processing message re-trying",
         timestamp: Date.now(),
@@ -340,17 +352,70 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     let pageUrl = await getCurrentUrlBasedOnSource(source);
     let screenshot = await getLatestScreenshot(source);
 
+    // Check if this URL is already visited
     if (ExploreModeAnthropicProvider.pageRouter.has(pageUrl)) return false;
+    
+    // Add URL to visited pages and increment counter
     ExploreModeAnthropicProvider.pageRouter.add(pageUrl);
+    ExploreModeAnthropicProvider.visitedPagesCount++;
+    
+    console.log(`[Explore Mode] Visited page count: ${ExploreModeAnthropicProvider.visitedPagesCount}`);
+
+    // Extract page metadata if using Puppeteer
+    let pageMetadata: PageMetadata = {};
+    if (source === "chrome-puppeteer" && PuppeteerService.page) {
+      pageMetadata = await PuppeteerService.page.evaluate(() => {
+        return {
+          title: document.title,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          language: document.documentElement.lang || "en",
+          description:
+            document
+              .querySelector('meta[name="description"]')
+              ?.getAttribute("content") || "",
+          totalScrollHeight: document.documentElement.scrollHeight,
+          currentScrollPosition: window.scrollY,
+        };
+      });
+    }
+
     const messageRequest = this.buildMessageRequest(
       this.getModelId(),
       [],
       false
     );
+    
+    // Generate exploration progress message based on pages visited
+    const explorationProgress = ExploreModeAnthropicProvider.visitedPagesCount < 10 ?
+      `\n\n⚠️ EXPLORATION PROGRESS: You've only visited ${ExploreModeAnthropicProvider.visitedPagesCount} unique pages so far. For comprehensive documentation, you should explore AT LEAST 10-15 more pages/sections before considering your exploration complete.\n\nDO NOT USE complete_task UNTIL YOU'VE EXPLORED MORE PAGES!` :
+      `\n\nEXPLORATION PROGRESS: You've visited ${ExploreModeAnthropicProvider.visitedPagesCount} unique pages.`;
+
+    /* prettier-ignore */
+    // Create a comprehensive context message with all available metadata
+    const contextMessage = `
+${modernizeOutput}
+
+PAGE METADATA:
+Current URL: ${pageUrl}
+Page Title: ${pageMetadata.title || 'Unknown'}
+Viewport Size: ${pageMetadata.viewportWidth || 'Unknown'} x ${pageMetadata.viewportHeight || 'Unknown'} pixels
+Page Language: ${pageMetadata.language || 'Unknown'}
+${pageMetadata.description ? `Meta Description: ${pageMetadata.description}` : ''}
+${screenshot.totalScroll ? `Total Page Height: ${screenshot.totalScroll}px` : ''}
+${screenshot.scrollPosition !== undefined ? `Current Scroll Position: ${screenshot.scrollPosition}px` : ''}${explorationProgress}
+
+IMPORTANT: 
+1. Use the exact URL provided above as the "URL/Location" for the current page/screen in your documentation.
+2. Include viewport dimensions and responsive behavior observations in your documentation.
+3. Mention the page title exactly as shown above in your documentation.
+4. Continue exploring by clicking on links, buttons, and menu items to discover more pages.
+`;
+    /* prettier-ignore */
     messageRequest.messages.push({
       role: "user",
       content: [
-        { type: "text", text: modernizeOutput },
+        { type: "text", text: contextMessage },
         {
           type: "image",
           source: {
@@ -368,7 +433,8 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       "./output",
       (stream.content[0] as any)["text"]
     );
-    ExploreModeAnthropicProvider.pageRouter.delete(pageUrl);
+    // Do NOT delete from pageRouter to maintain accurate visited page count!
+    // ExploreModeAnthropicProvider.pageRouter.delete(pageUrl); 
     return true;
   }
 }

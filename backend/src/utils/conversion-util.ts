@@ -81,8 +81,17 @@ export async function saveFileAndScreenshot(
     if (screenshot) {
       // Save the screenshot as an image
       const screenshotPath = path.join(directory, `${fileName}.jpg`);
-      const base64Data = screenshot.image.replace(/^data:image\/jpeg;base64,/, ""); // Remove base64 header
-      fs.writeFileSync(screenshotPath, base64Data, "base64");
+      
+      // Properly handle base64 data with or without header
+      let base64Data = screenshot.originalImage;
+      if (base64Data.includes(';base64,')) {
+        // Remove the data URL prefix if it exists
+        base64Data = base64Data.split(';base64,').pop() || '';
+      }
+      
+      // Convert base64 to buffer and write to file
+      const buffer = Buffer.from(base64Data, 'base64');
+      fs.writeFileSync(screenshotPath, buffer);
       console.log(`Screenshot saved at: ${screenshotPath}`);
     }
   } catch (error: any) {

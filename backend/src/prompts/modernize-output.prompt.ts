@@ -151,7 +151,7 @@ Important: You should navigate to all the possible different links/sections/flow
 
 ### [Page/Screen Name]
 - **Purpose**: What this page/screen is for
-- **URL/Location**: How to access this page/screen
+- **URL/Location**: The exact URL from the browser address bar (do not guess or construct this - use the precise current URL)
 - **Layout Structure**:
   - Description of the layout grid/organization
   - Responsive behavior (if applicable)
