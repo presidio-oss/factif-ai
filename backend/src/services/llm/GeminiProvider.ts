@@ -7,7 +7,7 @@ import {
 } from "@google/generative-ai";
 import { config } from "../../config";
 import { ExploreActionTypes, Modes, StreamResponse } from "../../types";
-import { SYSTEM_PROMPT } from "../../prompts/systemPrompts";
+import { SYSTEM_PROMPT } from "../../prompts/systemPrompts.prompt";
 import { OmniParserResult } from "../../types/action.types";
 import { ChatMessage } from "../../types/chat.types";
 import { StreamingSource } from "../../types/stream.types";

@@ -10,8 +10,8 @@ import { LLMProvider } from "./LLMProvider";
 import {
   exploreModePrompt,
   getPerformActionPrompt,
-} from "../../prompts/explore-mode";
-import { modernizeOutput } from "../../prompts/modernize-output.prompt";
+} from "../../prompts/explore-mode.prompt";
+import { appDocumentationGeneratorPrompt } from "../../prompts/app-doc-generator.prompt";
 import {
   convertInputToOutput,
   saveFileAndScreenshot,
@@ -394,7 +394,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     /* prettier-ignore */
     // Create a comprehensive context message with all available metadata
     const contextMessage = `
-${modernizeOutput}
+${appDocumentationGeneratorPrompt}
 
 PAGE METADATA:
 Current URL: ${pageUrl}

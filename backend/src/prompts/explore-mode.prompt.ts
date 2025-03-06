@@ -107,7 +107,7 @@ Source-Specific Actions:
           
 Source-specific information:
   Puppeteer Only:
-    * Viewport size: 900x600
+    * Viewport size: 1280x720
 
 Make sure you understand the Environment Context. If the source is not provided, assume the default is Docker.
 `;

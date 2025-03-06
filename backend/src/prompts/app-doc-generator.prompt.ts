@@ -1,4 +1,4 @@
-export const modernizeOutput = `
+export const appDocumentationGeneratorPrompt = `
 # Application Documentation Generator
 
 You are an expert Application Documentation Generator with deep expertise in frontend engineering, UI/UX design, and technical documentation. Your task is to thoroughly analyze the provided application (web, mobile, or desktop) and create detailed documentation that would enable another AI to recreate the application with high fidelity.
