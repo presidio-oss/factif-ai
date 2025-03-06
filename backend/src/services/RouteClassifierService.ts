@@ -1,5 +1,6 @@
 import { AnthropicProvider } from "./llm/AnthropicProvider";
 import Anthropic from "@anthropic-ai/sdk";
+import AnthropicBedrock from "@anthropic-ai/bedrock-sdk";
 import { config } from "../config";
 import { routeClassifierPrompt } from "../prompts/route-classifier.prompt";
 
@@ -10,16 +11,31 @@ export interface RouteCategory {
 
 export class RouteClassifierService {
   private anthropicProvider: AnthropicProvider;
+  private client: Anthropic | AnthropicBedrock;
 
   // Cache to store classifications for faster response
   private classificationCache: Map<string, RouteCategory> = new Map();
 
   constructor() {
     this.anthropicProvider = new AnthropicProvider();
+
+    // Initialize the appropriate client based on configuration
+    if (config.llm.anthropic.useBedrock) {
+      this.client = new AnthropicBedrock({
+        awsRegion: config.llm.anthropic.bedrock.region,
+        awsAccessKey: config.llm.anthropic.bedrock.credentials.accessKeyId,
+        awsSecretKey: config.llm.anthropic.bedrock.credentials.secretAccessKey,
+      });
+    } else {
+      this.client = new Anthropic({
+        apiKey: config.llm.anthropic.apiKey,
+      });
+    }
   }
 
   /**
    * Classify a route based on its URL and page content
+   * Uses LLM to determine the category instead of URL pattern matching
    * @param url The URL of the route
    * @param pageTitle The title of the page (if available)
    * @param pageContent The textual content of the page
@@ -36,35 +52,36 @@ export class RouteClassifierService {
       return this.classificationCache.get(cacheKey)!;
     }
 
-    // Default category based on URL patterns, used as fallback
-    const defaultCategory = this.getCategoryFromUrl(url);
-    if (defaultCategory) {
-      this.classificationCache.set(cacheKey, defaultCategory);
-      return defaultCategory;
-    }
-
     try {
-      // Skip API call if no API key is configured
-      if (!config.llm.anthropic.apiKey) {
+      // Skip API call if no API key is configured (for direct Anthropic)
+      // or if no AWS credentials are configured (for Bedrock)
+      if (
+        (!config.llm.anthropic.apiKey && !config.llm.anthropic.useBedrock) ||
+        (config.llm.anthropic.useBedrock &&
+          (!config.llm.anthropic.bedrock.credentials.accessKeyId ||
+            !config.llm.anthropic.bedrock.credentials.secretAccessKey))
+      ) {
         console.log(
-          "No Anthropic API key configured, using URL pattern matching"
+          "No Anthropic API key configured, using URL pattern matching as fallback"
         );
+        const fallbackCategory = this.getCategoryFromUrl(url);
         return (
-          this.getCategoryFromUrl(url) || {
+          fallbackCategory || {
             category: "uncategorized",
             description: "Classification skipped - no API key",
           }
         );
       }
 
-      const client = new Anthropic({
-        apiKey: config.llm.anthropic.apiKey,
-      });
-
       const prompt = routeClassifierPrompt(url, pageTitle, pageContent);
 
-      const response = await client.messages.create({
-        model: config.llm.anthropic.model,
+      // Get the appropriate model ID based on configuration
+      const modelId = config.llm.anthropic.useBedrock
+        ? config.llm.anthropic.bedrock.modelId
+        : config.llm.anthropic.model;
+
+      const response = await this.client.messages.create({
+        model: modelId,
         max_tokens: 200,
         messages: [{ role: "user", content: prompt }],
       });
@@ -87,38 +104,30 @@ export class RouteClassifierService {
           return classification;
         } catch (e) {
           console.error("Failed to parse route classification JSON:", e);
-          const fallback = this.getCategoryFromUrl(url);
-          return (
-            fallback || {
-              category: "uncategorized",
-              description: "Could not classify route",
-            }
-          );
+          return {
+            category: "uncategorized",
+            description: "Could not classify route: invalid JSON from LLM",
+          };
         }
       } else {
         console.error("No JSON found in response:", responseText);
-        const fallback = this.getCategoryFromUrl(url);
-        return (
-          fallback || {
-            category: "uncategorized",
-            description: "Could not classify route",
-          }
-        );
+        return {
+          category: "uncategorized",
+          description: "Could not classify route: no JSON in LLM response",
+        };
       }
     } catch (error) {
       console.error("Error classifying route:", error);
-      const fallback = this.getCategoryFromUrl(url);
-      return (
-        fallback || {
-          category: "uncategorized",
-          description: "Failed to classify",
-        }
-      );
+      return {
+        category: "uncategorized",
+        description: "Failed to classify: LLM API error",
+      };
     }
   }
 
   /**
    * Determine category based on URL pattern analysis
+   * Used as fallback when LLM classification fails or no API key is available
    * @param url The URL to analyze
    */
   private getCategoryFromUrl(url: string): RouteCategory | null {
