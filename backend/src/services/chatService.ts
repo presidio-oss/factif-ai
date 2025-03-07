@@ -7,6 +7,7 @@ import { OmniParserResult } from "../types/action.types";
 import { LLMProvider } from "./llm/LLMProvider";
 import { trimHistory } from "../utils/historyManager";
 import { ExploreModeAnthropicProvider } from "./llm/ExploreModeAnthropicProvider";
+import { ExploreModeOpenAIProvider } from "./llm/ExploreModeOpenAIProvider";
 import { OpenAIProvider } from "./llm/OpenAIProvider";
 import { GeminiProvider } from "./llm/GeminiProvider";
 import { AnthropicProvider } from "./llm/AnthropicProvider";
@@ -35,7 +36,11 @@ export class ChatService {
     } else if (mode === Modes.EXPLORE) {
       switch (config.llm.provider) {
         case "openai":
+          this.provider = new ExploreModeOpenAIProvider("openai");
+          break;
         case "azure-openai":
+          this.provider = new ExploreModeOpenAIProvider("azure");
+          break;
         case "gemini":
         case "anthropic":
         default:

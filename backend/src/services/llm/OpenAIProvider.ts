@@ -1,5 +1,6 @@
 import { Response } from "express";
 import OpenAI, { AzureOpenAI } from "openai";
+import { ChatCompletionMessageParam, ChatCompletionContentPart } from "openai/resources";
 import { config } from "../../config";
 import { ExploreActionTypes, Modes, StreamResponse } from "../../types";
 import { SYSTEM_PROMPT } from "../../prompts/systemPrompts.prompt";
@@ -7,7 +8,10 @@ import { OmniParserResult } from "../../types/action.types";
 import { ChatMessage } from "../../types/chat.types";
 import { StreamingSource } from "../../types/stream.types";
 import { LLMProvider } from "./LLMProvider";
-import { IProcessedScreenshot } from "../interfaces/BrowserService";
+import { IClickableElement, IProcessedScreenshot } from "../interfaces/BrowserService";
+import fs from "fs";
+import path from "path";
+import { convertElementsToInput } from "../../utils/prompt.util";
 
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI | AzureOpenAI;
@@ -34,19 +38,34 @@ export class OpenAIProvider implements LLMProvider {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   }
 
+  private logMessageRequest(messageRequest: any) {
+    try {
+      // Create logs directory if it doesn't exist
+      const logsDir = path.join(__dirname, "../../../logs");
+      if (!fs.existsSync(logsDir)) {
+        fs.mkdirSync(logsDir, { recursive: true });
+      }
+
+      // Create a log file with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const logFile = path.join(logsDir, `message-request-${timestamp}.json`);
+
+      fs.writeFileSync(logFile, JSON.stringify(messageRequest, null, 2));
+    } catch (error) {
+      console.error("Error logging message request:", error);
+    }
+  }
+
   private formatMessagesWithHistory(
     currentMessage: string,
     history: ChatMessage[],
     source?: StreamingSource,
     imageData?: IProcessedScreenshot,
     omniParserResult?: OmniParserResult,
-  ): { role: "system" | "user" | "assistant"; content: string | any[] }[] {
+  ): ChatCompletionMessageParam[] {
     const systemPrompt = SYSTEM_PROMPT(source, !!omniParserResult, imageData);
 
-    const formattedMessages: {
-      role: "system" | "user" | "assistant";
-      content: string | any[];
-    }[] = [
+    const formattedMessages: ChatCompletionMessageParam[] = [
       {
         role: "system",
         content: systemPrompt,
@@ -72,31 +91,50 @@ export class OpenAIProvider implements LLMProvider {
         : currentMessage;
 
     // Format the final message based on whether there's image data
-    const finalMessage =
-      imageData && (!config.omniParser.enabled || !omniParserResult)
-        ? {
-            role: "user" as const,
-            content: [
-              { type: "text", text: messageText },
-              ...(imageData.image.length > 0
-                ? [
-                    {
-                      type: "image_url",
-                      image_url: {
-                        url: `data:image/png;base64,${imageData.image}`,
-                      },
-                    },
-                  ]
-                : []),
-            ],
-          }
-        : {
-            role: "user" as const,
-            content: messageText,
-          };
-
-    formattedMessages.push(finalMessage);
+    if (imageData) {
+      // For OpenAI, we need to format the content as an array of text/image objects
+      const contentArray: ChatCompletionContentPart[] = [
+        { type: "text", text: messageText },
+      ];
+      
+      // Add the image if available (properly formatted for OpenAI)
+      if (imageData.image && imageData.image.length > 0) {
+        // Clean the base64 string by removing the prefix if present
+        const base64Image = imageData.image.replace(/^data:image\/\w+;base64,/, "");
+        
+        // Using proper typing for OpenAI SDK
+        contentArray.push({
+          type: "image_url", 
+          image_url: {
+            url: `data:image/png;base64,${base64Image}`,
+          },
+        } as ChatCompletionContentPart);
+      }
+      
+      // Add elements list as additional text if available
+      if (imageData.inference && imageData.inference.length > 0) {
+        contentArray.push({
+          type: "text",
+          text: this.addElementsList(imageData.inference),
+        });
+      }
+      
+      formattedMessages.push({
+        role: "user" as const,
+        content: contentArray,
+      });
+    } else {
+      formattedMessages.push({
+        role: "user" as const,
+        content: messageText,
+      });
+    }
+    
     return formattedMessages;
+  }
+
+  addElementsList(elements: IClickableElement[]) {
+    return `## Elements List:\n ${convertElementsToInput(elements)}`;
   }
 
   async streamResponse(
@@ -152,6 +190,12 @@ export class OpenAIProvider implements LLMProvider {
         omniParserResult,
       );
       console.log("Creating completion with model:", this.model);
+      
+      // Log the message request before sending
+      this.logMessageRequest({
+        model: this.model,
+        messages,
+      });
 
       const stream = await this.client.chat.completions.create({
         model: this.model,
