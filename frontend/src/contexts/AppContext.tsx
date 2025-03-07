@@ -18,6 +18,10 @@ interface AppContextType {
   setStopCurrentStreaming: React.Dispatch<React.SetStateAction<boolean>>;
   isExplorerCollapsed: boolean;
   setIsExplorerCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+  setMode: React.Dispatch<React.SetStateAction<string>>;
+  setType: React.Dispatch<React.SetStateAction<string>>;
+  mode: string;
+  type: string;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -42,6 +46,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [saveScreenshots, setSaveScreenshots] = useState(false);
   const [stopCurrentStreaming, setStopCurrentStreaming] = useState(false);
   const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(true);
+  const [mode, setMode] = useState<string>("explore");
+  const [type, setType] = useState<string>("explore");
 
   const value = {
     isChatStreaming,
@@ -60,6 +66,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setStopCurrentStreaming,
     isExplorerCollapsed,
     setIsExplorerCollapsed,
+    mode,
+    setMode,
+    type,
+    setType,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

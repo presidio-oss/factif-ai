@@ -39,7 +39,7 @@ export class PuppeteerService extends BaseStreamingService {
     } catch (error: any) {
       this.emitConsoleLog(
         "error",
-        `Browser initialization error: ${error.message || "Unknown error"}`,
+        `Browser initialization error: ${error.message || "Unknown error"}`
       );
       await this.cleanup();
       throw error;
@@ -48,7 +48,7 @@ export class PuppeteerService extends BaseStreamingService {
 
   async performAction(
     action: ActionRequest,
-    params?: any,
+    params?: any
   ): Promise<ActionResponse> {
     try {
       this.emitConsoleLog("info", `Performing browser action: ${action}`);
@@ -79,7 +79,7 @@ export class PuppeteerService extends BaseStreamingService {
     } catch (error: any) {
       this.emitConsoleLog(
         "error",
-        `Browser action error: ${error.message || "Unknown error"}`,
+        `Browser action error: ${error.message || "Unknown error"}`
       );
       throw error;
     }
@@ -93,7 +93,7 @@ export class PuppeteerService extends BaseStreamingService {
     if (!this.isInitialized || !this.isConnected) {
       this.emitConsoleLog(
         "info",
-        "Cannot start streaming: Browser not initialized",
+        "Cannot start streaming: Browser not initialized"
       );
       return;
     }
@@ -171,11 +171,26 @@ export class PuppeteerService extends BaseStreamingService {
     };
   }
 
+  async getCurrentUrl(): Promise<string> {
+    if (!PuppeteerService.page) {
+      throw new Error("Browser not launched");
+    }
+    let url = PuppeteerService.page.url();
+    console.log("===", url);
+    if (!url) {
+      await PuppeteerService.page.evaluate(() => {
+        url = window.location.href;
+        console.log("===>>>", url);
+      });
+    }
+    return url;
+  }
+
   async takeScreenshot(): Promise<string> {
     try {
       if (!PuppeteerService.browser || !PuppeteerService.page) {
         throw new Error(
-          "Browser is not launched. Please launch the browser first.",
+          "Browser is not launched. Please launch the browser first."
         );
       }
       const context = PuppeteerService.browser.contexts()[0];
@@ -195,7 +210,7 @@ export class PuppeteerService extends BaseStreamingService {
   }> {
     if (!PuppeteerService.browser) {
       throw new Error(
-        "Browser is not launched. Please launch the browser first.",
+        "Browser is not launched. Please launch the browser first."
       );
     }
 
@@ -211,16 +226,16 @@ export class PuppeteerService extends BaseStreamingService {
 
       // Create Sets to store unique elements
       const uniqueClickableElements = Array.from(
-        document.querySelectorAll(clickableSelectors),
+        document.querySelectorAll(clickableSelectors)
       );
       const uniqueInputElements = Array.from(
-        document.querySelectorAll(inputSelectors),
+        document.querySelectorAll(inputSelectors)
       );
 
       function checkIfElementIsVisuallyVisible(
         element: Element,
         centerX: number,
-        centerY: number,
+        centerY: number
       ) {
         const topElement = document.elementFromPoint(centerX, centerY);
         return !(topElement !== element && !element.contains(topElement));
@@ -274,7 +289,7 @@ export class PuppeteerService extends BaseStreamingService {
               isVisuallyVisible: checkIfElementIsVisuallyVisible(
                 element,
                 left + width / 2,
-                top + height / 2,
+                top + height / 2
               ),
             }
           : null;
@@ -295,7 +310,7 @@ export class PuppeteerService extends BaseStreamingService {
 
   async markElements(
     base64Image: string,
-    elements: IClickableElement[],
+    elements: IClickableElement[]
   ): Promise<string> {
     const imageBuffer = Buffer.from(base64Image, "base64");
     const image = await loadImage(imageBuffer);
@@ -316,7 +331,7 @@ export class PuppeteerService extends BaseStreamingService {
       context.fillText(
         `[${index.toString()}]`,
         element.coordinate.x,
-        element.coordinate.y + 5,
+        element.coordinate.y + 5
       );
     });
 

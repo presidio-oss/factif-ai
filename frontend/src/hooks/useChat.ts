@@ -181,6 +181,8 @@ export const useChat = () => {
 
               // Reset processing flag before recursive call
               isProcessing.current = false;
+
+              console.log("Action result:", processedResponse.actionResult);
               await handleChatMessage(
                 processedResponse.actionResult,
                 imageData,

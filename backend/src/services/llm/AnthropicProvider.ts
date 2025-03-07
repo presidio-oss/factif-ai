@@ -2,14 +2,16 @@ import { Response } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import AnthropicBedrock from "@anthropic-ai/bedrock-sdk";
 import { config } from "../../config";
-import { StreamResponse } from "../../types";
-import { SYSTEM_PROMPT } from "../../prompts/systemPrompts";
+import { ExploreActionTypes, Modes, StreamResponse } from "../../types";
+import { SYSTEM_PROMPT } from "../../prompts/systemPrompts.prompt";
 import { OmniParserResult } from "../../types/action.types";
 import { ChatMessage } from "../../types/chat.types";
 import { StreamingSource } from "../../types/stream.types";
 import { LLMProvider } from "./LLMProvider";
-import fs from "fs";
-import path from "path";
+import {
+  addOmniParserResults,
+  logMessageRequest,
+} from "../../utils/common.util";
 import {
   IClickableElement,
   IProcessedScreenshot,
@@ -17,24 +19,6 @@ import {
 import { convertElementsToInput } from "../../utils/prompt.util";
 
 export class AnthropicProvider implements LLMProvider {
-  private logMessageRequest(messageRequest: any) {
-    try {
-      // Create logs directory if it doesn't exist
-      const logsDir = path.join(__dirname, "../../../logs");
-      if (!fs.existsSync(logsDir)) {
-        fs.mkdirSync(logsDir, { recursive: true });
-      }
-
-      // Create a log file with timestamp
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const logFile = path.join(logsDir, `message-request-${timestamp}.json`);
-
-      fs.writeFileSync(logFile, JSON.stringify(messageRequest, null, 2));
-    } catch (error) {
-      console.error("Error logging message request:", error);
-    }
-  }
-
   private client: Anthropic | AnthropicBedrock;
 
   constructor() {
@@ -59,7 +43,7 @@ export class AnthropicProvider implements LLMProvider {
     currentMessage: string,
     history: ChatMessage[],
     imageData?: IProcessedScreenshot,
-    source?: StreamingSource,
+    source?: StreamingSource
   ): { role: "user" | "assistant"; content: string | any[] }[] {
     const formattedMessages: {
       role: "user" | "assistant";
@@ -85,6 +69,7 @@ export class AnthropicProvider implements LLMProvider {
     });
 
     // Add current message with image if present
+    console.log("==============", imageData);
     if (imageData) {
       formattedMessages.push({
         role: "user",
@@ -99,7 +84,7 @@ export class AnthropicProvider implements LLMProvider {
                     media_type: "image/png",
                     data: imageData.image.replace(
                       /^data:image\/png;base64,/,
-                      "",
+                      ""
                     ),
                   },
                 },
@@ -142,32 +127,6 @@ export class AnthropicProvider implements LLMProvider {
     };
   }
 
-  addOmniParserResults(
-    messages: any[],
-    omniParserResult: OmniParserResult,
-    userRole: string,
-  ): void {
-    const lastMessage = messages[messages.length - 1];
-    if (lastMessage.role === userRole) {
-      const content = Array.isArray(lastMessage.content)
-        ? lastMessage.content[0].text
-        : lastMessage.content;
-      const updatedContent = `${content}\n\nOmni Parser Results:\n${JSON.stringify(
-        {
-          label_coordinates: omniParserResult.label_coordinates,
-          parsed_content: omniParserResult.parsed_content,
-        },
-        null,
-        2,
-      )}`;
-      if (Array.isArray(lastMessage.content)) {
-        lastMessage.content[0].text = updatedContent;
-      } else {
-        lastMessage.content = updatedContent;
-      }
-    }
-  }
-
   async processStreamResponse(stream: any, res: Response): Promise<void> {
     for await (const chunk of stream) {
       if (chunk.type === "content_block_delta" && chunk.delta?.text) {
@@ -188,10 +147,12 @@ export class AnthropicProvider implements LLMProvider {
     res: Response,
     message: string,
     history: ChatMessage[] = [],
+    mode: Modes = Modes.REGRESSION,
+    type: ExploreActionTypes = ExploreActionTypes.EXPLORE,
     source?: StreamingSource,
     imageData?: IProcessedScreenshot,
     omniParserResult?: OmniParserResult,
-    retryCount: number = config.retryAttemptCount,
+    retryCount: number = config.retryAttemptCount
   ): Promise<void> {
     const retryArray = new Array(retryCount).fill(0);
     let isRetrySuccessful = false;
@@ -200,9 +161,11 @@ export class AnthropicProvider implements LLMProvider {
         res,
         message,
         history,
+        mode,
+        type,
         source,
         imageData,
-        omniParserResult,
+        omniParserResult
       );
       if (isRetrySuccessful) {
         return;
@@ -222,9 +185,11 @@ export class AnthropicProvider implements LLMProvider {
     res: Response,
     message: string,
     history: ChatMessage[] = [],
+    _mode: Modes = Modes.REGRESSION,
+    _type: ExploreActionTypes = ExploreActionTypes.ACTION,
     source?: StreamingSource,
     imageData?: IProcessedScreenshot,
-    omniParserResult?: OmniParserResult,
+    omniParserResult?: OmniParserResult
   ) {
     console.log("Processing message with history length:", history.length);
     const USER_ROLE = "user";
@@ -235,23 +200,19 @@ export class AnthropicProvider implements LLMProvider {
         message,
         history,
         imageData,
-        source,
+        source
       );
       // If omni parser is enabled, and we have results, add them to the last user message
       if (config.omniParser.enabled && omniParserResult) {
-        this.addOmniParserResults(
-          formattedMessage,
-          omniParserResult,
-          USER_ROLE,
-        );
+        addOmniParserResults(formattedMessage, omniParserResult, USER_ROLE);
       }
 
       const messageRequest = this.buildMessageRequest(
         modelId,
-        formattedMessage,
+        formattedMessage
       );
       // Log the message request before sending
-      this.logMessageRequest(messageRequest);
+      logMessageRequest(messageRequest);
 
       const stream = await this.client.messages.create(messageRequest);
       await this.processStreamResponse(stream, res);
@@ -259,7 +220,7 @@ export class AnthropicProvider implements LLMProvider {
     } catch (error) {
       console.error("Error in AnthropicProvider:", error);
       this.sendStreamResponse(res, {
-        message: "Error processing message re-tyring",
+        message: "Error processing message re-trying",
         timestamp: Date.now(),
         isError: false,
       });

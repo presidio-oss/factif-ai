@@ -10,6 +10,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import chatRoutes from "./routes/chatRoutes";
 import fileSystemRoutes from "./routes/fileSystemRoutes";
 import actionRoutes from "./routes/actionRoutes";
+import exploreRoutes from "./routes/exploreRoutes";
 import StreamingSourceService from "./services/StreamingSourceService";
 import { StreamingController } from "./controllers/streamingController";
 import { ActionExecutorService } from "./services/actionExecutorService";
@@ -49,7 +50,7 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
-  }),
+  })
 );
 
 // Configure JSON body parser with increased limit
@@ -59,6 +60,7 @@ app.use(express.json({ limit: "50mb" }));
 app.use("/api/", chatRoutes);
 app.use("/api/filesystem", fileSystemRoutes);
 app.use("/api/actions", actionRoutes);
+app.use("/api/explore", exploreRoutes);
 
 // Socket.io connection handling
 io.on("connection", (socket) => {
@@ -66,16 +68,16 @@ io.on("connection", (socket) => {
 
   // Streaming related events
   socket.on("start-stream", (params) =>
-    streamingController.handleStartStream(socket, params),
+    streamingController.handleStartStream(socket, params)
   );
   socket.on("browser-action", (params) =>
-    streamingController.handleBrowserAction(socket, params),
+    streamingController.handleBrowserAction(socket, params)
   );
   socket.on("request-screenshot", (params) =>
-    streamingController.handleRequestScreenshot(socket, params),
+    streamingController.handleRequestScreenshot(socket, params)
   );
   socket.on("stop-browser", (params) =>
-    streamingController.handleStopBrowser(socket, params),
+    streamingController.handleStopBrowser(socket, params)
   );
   socket.on("disconnect", () => streamingController.handleDisconnect());
 

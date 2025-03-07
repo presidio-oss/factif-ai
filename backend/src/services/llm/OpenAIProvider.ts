@@ -1,8 +1,8 @@
 import { Response } from "express";
 import OpenAI, { AzureOpenAI } from "openai";
 import { config } from "../../config";
-import { StreamResponse } from "../../types";
-import { SYSTEM_PROMPT } from "../../prompts/systemPrompts";
+import { ExploreActionTypes, Modes, StreamResponse } from "../../types";
+import { SYSTEM_PROMPT } from "../../prompts/systemPrompts.prompt";
 import { OmniParserResult } from "../../types/action.types";
 import { ChatMessage } from "../../types/chat.types";
 import { StreamingSource } from "../../types/stream.types";
@@ -103,6 +103,8 @@ export class OpenAIProvider implements LLMProvider {
     res: Response,
     message: string,
     history: ChatMessage[] = [],
+    _mode: Modes = Modes.REGRESSION,
+    _type: ExploreActionTypes = ExploreActionTypes.EXPLORE,
     source?: StreamingSource,
     imageData?: IProcessedScreenshot,
     omniParserResult?: OmniParserResult,

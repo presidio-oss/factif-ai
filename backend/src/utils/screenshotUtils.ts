@@ -6,7 +6,7 @@ import { DockerCommands } from "../services/implementations/docker/DockerCommand
 import { IProcessedScreenshot } from "../services/interfaces/BrowserService";
 
 export const getLatestScreenshot = async (
-  source?: StreamingSource,
+  source?: StreamingSource
 ): Promise<IProcessedScreenshot> => {
   let screenshot: IProcessedScreenshot = {
     image: "",
@@ -29,8 +29,9 @@ export const getLatestScreenshot = async (
       // For Docker, get screenshot from the active container
       try {
         const containerName = "factif-vnc";
-        const containerStatus =
-          await DockerCommands.checkContainerStatus(containerName);
+        const containerStatus = await DockerCommands.checkContainerStatus(
+          containerName
+        );
         if (
           containerStatus.exists &&
           containerStatus.running &&
@@ -39,7 +40,7 @@ export const getLatestScreenshot = async (
           const screenshotPath = `/tmp/screenshot_${Date.now()}.png`;
           const currentScreenshot = await DockerCommands.takeScreenshot(
             containerStatus.id,
-            screenshotPath,
+            screenshotPath
           );
           screenshot.image = currentScreenshot;
           screenshot.originalImage = currentScreenshot;
@@ -55,9 +56,9 @@ export const getLatestScreenshot = async (
 };
 
 export const saveScreenshot = async (
-  screenshot: string,
+  screenshot: IProcessedScreenshot,
   folderPath: string,
-  chatId: string,
+  chatId: string
 ): Promise<string> => {
   try {
     const screenshotDir = path.join(folderPath, chatId || "", "screenshots");
@@ -69,7 +70,7 @@ export const saveScreenshot = async (
     const fileName = `screenshot_${Date.now()}.jpg`;
     const filePath = path.join(screenshotDir, fileName);
     // Save the screenshot
-    fs.writeFileSync(filePath, Buffer.from(screenshot, "base64"));
+    fs.writeFileSync(filePath, Buffer.from(screenshot.image, "base64"));
     console.log(`Screenshot saved: ${filePath}`);
 
     // Return the relative path of the saved screenshot

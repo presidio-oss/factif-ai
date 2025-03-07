@@ -1,5 +1,4 @@
 import { PreviewContentProps } from "./PreviewTypes";
-import { useAppContext } from "@/contexts/AppContext";
 
 export const PreviewContent = ({
   error,
@@ -10,8 +9,6 @@ export const PreviewContent = ({
   previewRef,
   imageRef,
 }: PreviewContentProps) => {
-  const { isExplorerCollapsed } = useAppContext();
-
   return (
     <div
       ref={previewRef}
@@ -20,17 +17,17 @@ export const PreviewContent = ({
       onKeyDown={interactiveMode ? handleInteraction : undefined}
       tabIndex={interactiveMode ? 0 : undefined}
     >
-      <div className="text-gray-300 h-full flex items-center justify-center p-4">
+      <div className="text-gray-300 h-full flex items-center justify-center p-4 max-w-full">
         {error ? (
           <div className="text-red-500 text-center">
             <p>Error: {error}</p>
           </div>
         ) : streamingSource === "ubuntu-docker-vnc" ? (
           <div
-            className="relative w-[900px] h-[600px]"
+            className="relative w-[1366px] h-[768px]"
             style={{
               pointerEvents: interactiveMode ? "auto" : "none",
-              transform: isExplorerCollapsed ? "scale(1)" : "scale(0.85)",
+              maxWidth: "100%",
               transformOrigin: "center center",
               transition: "transform 0.3s ease-in-out",
             }}

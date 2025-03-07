@@ -1,3 +1,5 @@
+import { IProcessedScreenshot } from "../services/interfaces/BrowserService";
+
 export interface ErrorResponse {
   status: string;
   message: string;
@@ -21,4 +23,15 @@ export interface StreamResponse {
   isPartial?: boolean;
   isComplete?: boolean;
   isError?: boolean;
+  imageData?: IProcessedScreenshot;
+}
+
+export enum Modes {
+  EXPLORE = "explore",
+  REGRESSION = "regression",
+}
+
+export enum ExploreActionTypes {
+  ACTION = "action",
+  EXPLORE = "explore",
 }

@@ -1,15 +1,16 @@
 import { useEffect } from "react";
-import { ChatInput } from "./ChatInput";
-import { ChatMessages } from "./ChatMessages";
-import { useAppContext } from "../../contexts/AppContext";
-import { useChat } from "../../hooks/useChat";
+import { ChatInput } from "../Chat/ChatInput";
+import { ChatMessages } from "../Chat/ChatMessages";
+import { useAppContext } from "@/contexts/AppContext";
+import { useExploreChat } from "@/hooks/useExploreChat";
 import { Button } from "@nextui-org/react";
-import { Suggestions } from "./components/Suggestions";
+import { Suggestion, Suggestions } from "../Chat/components/Suggestions";
 
-export const Chat = () => {
-  const { currentChatId, setCurrentChatId, isChatStreaming } = useAppContext();
+export const ExploreChat = () => {
+  const { currentChatId, setCurrentChatId, isChatStreaming, type } =
+    useAppContext();
   const { messages, sendMessage, clearChat, messagesEndRef, stopStreaming } =
-    useChat();
+    useExploreChat();
 
   useEffect(() => {
     if (!currentChatId) {
@@ -18,7 +19,7 @@ export const Chat = () => {
   }, [currentChatId, setCurrentChatId]);
 
   const handleSendMessage = (message: string) => {
-    sendMessage(message, true);
+    sendMessage(message, true, type).then();
   };
 
   const handleClearChat = () => {
@@ -33,7 +34,9 @@ export const Chat = () => {
       <div className="h-[72px] px-6 border-b border-content3 bg-background flex items-center">
         <div className="flex justify-between items-center w-full">
           <div className="flex flex-col items-start">
-            <h2 className="text-foreground text-lg font-normal mb-0.5">Chat</h2>
+            <h2 className="text-foreground text-lg font-normal mb-0.5">
+              Explore Chat
+            </h2>
             {currentChatId && (
               <span className="text-xs text-foreground/60">
                 {currentChatId}
@@ -77,7 +80,12 @@ export const Chat = () => {
             </div>
             {!hasUserInteraction && (
               <div className="absolute inset-0 flex items-center justify-center p-6">
-                <Suggestions onSendMessage={handleSendMessage} />
+                <Suggestions
+                  title="What would you like to explore?"
+                  footerText="or enter your own site you like to explore"
+                  suggestions={ExploreModeSuggestions}
+                  onSendMessage={handleSendMessage}
+                />
               </div>
             )}
           </div>
@@ -93,3 +101,18 @@ export const Chat = () => {
     </div>
   );
 };
+
+export const ExploreModeSuggestions: Suggestion[] = [
+  {
+    type: "explore",
+    title: "Explore Wikipedia",
+    description: "Explore all the features and links on wikipedia.org",
+    prompt: "Explore https://wikipedia.org and document the features and links",
+  },
+  {
+    type: "explore",
+    title: "Explore Ecommerce Site",
+    description: "Explore all the features and links on saucedemo.com",
+    prompt: "Explore https://www.saucedemo.com/ and document the features and links",
+  },
+];

@@ -230,6 +230,50 @@ export class DockerActions {
     }
   }
 
+  static async getUrl(containerId: string): Promise<string> {
+    try {
+      // Focus on the Firefox window and copy the URL from the address bar
+      await DockerCommands.executeCommand({
+        command: [
+          "exec",
+          containerId,
+          "xdotool",
+          "search",
+          "--onlyvisible",
+          "--class",
+          "firefox",
+          "windowactivate",
+          "--sync",
+          "key",
+          "ctrl+l",
+          "ctrl+c",
+          "Escape",
+        ],
+        successMessage: "URL copied from Firefox",
+        errorMessage: "Failed to copy URL from Firefox",
+      });
+
+      // Retrieve the copied URL from the clipboard
+      const result = await DockerCommands.executeCommand({
+        command: [
+          "exec",
+          containerId,
+          "xclip",
+          "-o",
+          "-selection",
+          "clipboard",
+        ],
+        successMessage: "URL retrieved from clipboard",
+        errorMessage: "Failed to retrieve URL from clipboard",
+      });
+
+      return result.trim();
+    } catch (error: any) {
+      console.log("error here");
+      throw new Error(error.message || "Failed to get URL");
+    }
+  }
+
   static async performAction(
     containerId: string,
     action: ActionRequest,
@@ -305,6 +349,14 @@ export class DockerActions {
           break;
         case "scroll_down":
           result = await DockerActions.scroll(containerId, "down");
+          break;
+        case "getUrl":
+          const url = await DockerActions.getUrl(containerId);
+          result = {
+            status: "success",
+            message: `Action Result: Retrieved URL: ${url}`,
+            screenshot: "",
+          };
           break;
         default:
           return {
