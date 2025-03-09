@@ -25,10 +25,6 @@ interface IProcessedScreenshot {
 }
 
 export const useExploreChat = () => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [latestOmniParserResult, setLatestOmniParserResult] =
-    useState<OmniParserResult | null>(null);
-
   const {
     isChatStreaming,
     setIsChatStreaming,
@@ -39,6 +35,11 @@ export const useExploreChat = () => {
     saveScreenshots,
     setType,
   } = useAppContext();
+
+  // Initialize with empty array, we'll load from localStorage in useEffect
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [latestOmniParserResult, setLatestOmniParserResult] =
+    useState<OmniParserResult | null>(null);
 
   const { setGraphData } = useExploreModeContext();
 
@@ -65,10 +66,48 @@ export const useExploreChat = () => {
     MessageProcessor.initialize(setHasActiveAction);
   }, [setHasActiveAction]);
 
-  // Keep messagesRef in sync with messages state
+  // Load messages from localStorage when component mounts or chatId changes
+  useEffect(() => {
+    if (currentChatId) {
+      const storedMessagesKey = `explore_chat_${currentChatId}`;
+      const storedMessages = localStorage.getItem(storedMessagesKey);
+      
+      if (storedMessages) {
+        try {
+          const parsedMessages = JSON.parse(storedMessages);
+          // Convert ISO strings back to Date objects
+          const processedMessages = parsedMessages.map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }));
+          
+          // Only set messages if we have some and if they're different from current state
+          if (processedMessages.length > 0) {
+            console.log(`Loaded ${processedMessages.length} messages for chat ${currentChatId}`);
+            setMessages(processedMessages);
+          }
+        } catch (error) {
+          console.error("Failed to parse stored explore messages:", error);
+        }
+      }
+    }
+  }, [currentChatId]); // Re-run when chatId changes
+
+  // Keep messagesRef in sync with messages state and save to localStorage
   useEffect(() => {
     messagesRef.current = messages;
-  }, [messages]);
+    
+    // Only save when we have a chat ID and messages
+    if (currentChatId && messages.length > 0) {
+      const storedMessagesKey = `explore_chat_${currentChatId}`;
+      localStorage.setItem(storedMessagesKey, 
+        JSON.stringify(messages.map(msg => ({
+          ...msg,
+          // Convert Date to ISO string for storage
+          timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp
+        }))));
+    }
+  }, [messages, currentChatId]);
 
   // Reset streaming state only on unmount
   useEffect(() => {
@@ -458,14 +497,16 @@ export const useExploreChat = () => {
     console.log("nextElementToVisit ===>", nextElementToVisit);
     isProcessing.current = false;
     setType("action");
-    setMessages([]);
+    
+    // Don't clear messages - we want to maintain chat history
+    // Instead, just proceed with the next element to visit
     if (nextElementToVisit) {
       const message = `In ${nextElementToVisit.url} \n Visit ${nextElementToVisit.text} on coordinate : ${nextElementToVisit.coordinates} with about this element : ${nextElementToVisit.aboutThisElement}. You can decide what to do prior to it.`;
       addMessage({
         text: message,
         timestamp: new Date(),
         isUser: true,
-        isHistory: false,
+        isHistory: true, // Mark as history so it's included in persistence
       });
       await handleExploreMessage(message, "action", imageData, undefined);
     } else {
@@ -644,6 +685,11 @@ export const useExploreChat = () => {
       isProcessing.current = false;
       messagesRef.current = [];
       setMessages([]);
+      
+      // Also clear the localStorage for this chat
+      if (currentChatId) {
+        localStorage.removeItem(`explore_chat_${currentChatId}`);
+      }
     }
   };
 
