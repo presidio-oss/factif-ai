@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentUrl, executeAction, sendExploreChatMessage } from "../services/api";
 import { ChatMessage, OmniParserResult } from "../types/chat.types";
-import { useAppContext } from "../contexts/AppContext";
+import { useAppContext } from "@/contexts/AppContext";
+import { useExploreModeContext } from "@/contexts/ExploreModeContext";
 import { MessageProcessor } from "../services/messageProcessor";
 import SocketService from "../services/socketService";
 import UIInteractionService from "../services/uiInteractionService";
@@ -9,9 +10,9 @@ import {
   IExploredClickableElement,
   IExploreGraphData,
   IExploreQueueItem,
-} from "@/types/message.types.ts";
+} from "@/types/message.types";
+import { updateCurrentSession, getSession, getSessionsList } from "@/utils/exploreHistoryManager";
 import { v4 as uuid } from "uuid";
-import { useExploreModeContext } from "@/contexts/ExploreModeContext.tsx";
 import { createEdgeOrNode } from "@/utils/graph.util.ts";
 import { StreamingSource } from "@/types/api.types.ts";
 
@@ -31,17 +32,23 @@ export const useExploreChat = () => {
     setHasActiveAction,
     folderPath,
     currentChatId,
+    setCurrentChatId,
     streamingSource,
     saveScreenshots,
     setType,
   } = useAppContext();
 
+  const { 
+    setGraphData, 
+    setRecentSessions, 
+    setShowRecentChats,
+    registerLoadSessionFn
+  } = useExploreModeContext();
+
   // Initialize with empty array, we'll load from localStorage in useEffect
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [latestOmniParserResult, setLatestOmniParserResult] =
     useState<OmniParserResult | null>(null);
-
-  const { setGraphData } = useExploreModeContext();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasPartialMessage = useRef(false);
@@ -106,8 +113,14 @@ export const useExploreChat = () => {
           // Convert Date to ISO string for storage
           timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp
         }))));
+        
+      // Also save to the session system for automatic persistence
+      updateCurrentSession(currentChatId, messages, exploreGraphData.current);
+      
+      // Update the sessions list in ExploreModeContext
+      setRecentSessions(getSessionsList());
     }
-  }, [messages, currentChatId]);
+  }, [messages, currentChatId, setRecentSessions]);
 
   // Reset streaming state only on unmount
   useEffect(() => {
@@ -710,6 +723,63 @@ export const useExploreChat = () => {
     }
   };
 
+  // Session management functions
+  const loadSession = (sessionId: string) => {
+    if (isChatStreaming) return;
+    
+    const session = getSession(sessionId);
+    if (!session) {
+      console.error(`Failed to load session ${sessionId}: not found`);
+      return;
+    }
+    
+    // Set current chat ID
+    setCurrentChatId(sessionId);
+    
+    // Load messages
+    if (session.messages && session.messages.length > 0) {
+      const processedMessages = session.messages.map((msg: any) => ({
+        ...msg,
+        timestamp: new Date(msg.timestamp)
+      }));
+      setMessages(processedMessages);
+      messagesRef.current = processedMessages;
+    } else {
+      setMessages([]);
+      messagesRef.current = [];
+    }
+    
+    // Load graph data
+    if (session.graphData) {
+      exploreGraphData.current = session.graphData;
+      setGraphData(session.graphData);
+    } else {
+      exploreGraphData.current = { nodes: [], edges: [] };
+      setGraphData({ nodes: [], edges: [] });
+    }
+    
+    // Reset other state
+    hasPartialMessage.current = false;
+    activeMessageId.current = null;
+    isProcessing.current = false;
+    
+    console.log(`Loaded session ${sessionId} with ${session.messages?.length || 0} messages`);
+
+    // Close recent chats panel
+    setShowRecentChats(false);
+  };
+
+  // Register the loadSession function with the context
+  // Using useRef to ensure we only register once
+  const registeredRef = useRef(false);
+  useEffect(() => {
+    if (!registeredRef.current) {
+      registerLoadSessionFn(loadSession);
+      registeredRef.current = true;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array to ensure this only runs once
+
   return {
     messages,
     sendMessage,
@@ -717,5 +787,6 @@ export const useExploreChat = () => {
     messagesEndRef,
     stopStreaming,
     latestOmniParserResult,
+    loadSession,
   };
 };

@@ -2,13 +2,16 @@ import { useEffect } from "react";
 import { ChatInput } from "../Chat/ChatInput";
 import { ChatMessages } from "../Chat/ChatMessages";
 import { useAppContext } from "@/contexts/AppContext";
+import { useExploreModeContext } from "@/contexts/ExploreModeContext";
 import { useExploreChat } from "@/hooks/useExploreChat";
 import { Button } from "@nextui-org/react";
 import { Suggestion, Suggestions } from "../Chat/components/Suggestions";
+import RecentChats from "./RecentChats";
 
 export const ExploreChat = () => {
   const { currentChatId, setCurrentChatId, isChatStreaming, type } =
     useAppContext();
+  const { showRecentChats, setShowRecentChats } = useExploreModeContext();
   const { messages, sendMessage, clearChat, messagesEndRef, stopStreaming } =
     useExploreChat();
 
@@ -29,6 +32,11 @@ export const ExploreChat = () => {
 
   const hasUserInteraction = messages.some((msg) => msg.isUser);
 
+  // Toggle Recent Chats panel
+  const toggleRecentChats = () => {
+    setShowRecentChats(!showRecentChats);
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="h-[72px] px-6 border-b border-content3 bg-background flex items-center">
@@ -43,32 +51,65 @@ export const ExploreChat = () => {
               </span>
             )}
           </div>
-          <Button
-            onPress={handleClearChat}
-            isDisabled={isChatStreaming}
-            color="default"
-            variant="bordered"
-            size="sm"
-            isIconOnly
-            className="min-w-unit-8 w-8 h-8"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          <div className="flex gap-2">
+            <Button
+              onPress={toggleRecentChats}
+              isDisabled={isChatStreaming}
+              color="default"
+              variant="flat"
+              size="sm"
+              className="min-w-unit-16"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-          </Button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4 mr-1"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+              History
+            </Button>
+            <Button
+              onPress={handleClearChat}
+              isDisabled={isChatStreaming}
+              color="default"
+              variant="bordered"
+              size="sm"
+              isIconOnly
+              className="min-w-unit-8 w-8 h-8"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+            </Button>
+          </div>
         </div>
       </div>
+      
+      {/* Recent Chats Panel */}
+      {showRecentChats && (
+        <div className="absolute z-30 top-[72px] left-0 right-0 p-3">
+          <RecentChats />
+        </div>
+      )}
       <div className="flex-1 relative overflow-hidde bg-background">
         <div className="absolute inset-0">
           <div className="h-full overflow-y-auto">

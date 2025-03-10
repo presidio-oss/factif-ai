@@ -96,3 +96,15 @@ export interface IExploreQueueItem {
     nodeId: string;
   };
 }
+
+export interface IExploreSessionMeta {
+  id: string;
+  title: string;
+  timestamp: string;
+  preview: string;
+}
+
+export interface IExploreSession extends IExploreSessionMeta {
+  messages: any[];
+  graphData: IExploreGraphData;
+}
