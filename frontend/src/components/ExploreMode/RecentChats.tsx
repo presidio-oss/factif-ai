@@ -80,7 +80,7 @@ export const RecentChats: React.FC = () => {
     <div className="recent-chats-panel bg-background border border-content3 rounded-md shadow-md w-full">
       <div className="p-3 border-b border-content3">
         <div className="flex justify-between items-center">
-          <h2 className="text-lg font-medium">Recent Explorations</h2>
+          <h2 className="text-lg font-medium text-white">Recent Explorations</h2>
           <button
             onClick={() => setShowRecentChats(false)}
             className="text-foreground/50 hover:text-foreground"
