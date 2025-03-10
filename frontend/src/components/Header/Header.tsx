@@ -30,7 +30,7 @@ export const Header = () => {
         <div className="flex items-center gap-3">
           <Link to="/">
             <h2 className="text-xl md:text-2xl text-white font-normal">
-              FACTIF AI
+              FACTIFAI
             </h2>
           </Link>
         </div>

@@ -20,9 +20,9 @@
 </div>
 <br>
 
-# 🚀 Factif AI
+# 🚀 Factifai
 
-**Factif AI** revolutionizes test automation by directly controlling your computer through AI. Using built-in vision capabilities of Claude, OpenAI, and Gemini along with computer use, it can navigate any application naturally - clicking, typing, and verifying results just like a human would.
+**Factifai** revolutionizes test automation by directly controlling your computer through AI. Using built-in vision capabilities of Claude, OpenAI, and Gemini along with computer use, it can navigate any application naturally - clicking, typing, and verifying results just like a human would.
 
 <div align="center">
 <img src="assets/gifs/factif-ai-demo.gif" alt="FACTIF-AI in action" width="900"/>
@@ -40,7 +40,7 @@
 
 ## 🌟 Overview
 
-In today's fast-paced software development landscape, efficient testing is crucial for delivering high-quality applications. Factif AI transforms how teams approach testing by combining AI vision with direct computer control, enabling natural interaction with applications.
+In today's fast-paced software development landscape, efficient testing is crucial for delivering high-quality applications. Factifai transforms how teams approach testing by combining AI vision with direct computer control, enabling natural interaction with applications.
 
 ## ✨ Key Features
 
@@ -94,7 +94,7 @@ For detailed configuration options, see:
 
 ## 🖥️ Automation Modes
 
-Factif AI offers two powerful modes of automation to cover all your testing needs:
+Factifai offers two powerful modes of automation to cover all your testing needs:
 
 <div align="center">
 <img src="assets/gifs/factif-ai-preview.gif" alt="FACTIF-AI in action" width="900"/>

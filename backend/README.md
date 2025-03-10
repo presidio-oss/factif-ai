@@ -1,6 +1,6 @@
-# Factif AI Backend
+# Factifai Backend
 
-Backend server for Factif AI, providing AI vision and computer control capabilities through Puppeteer and Docker VNC.
+Backend server for Factifai, providing AI vision and computer control capabilities through Puppeteer and Docker VNC.
 
 ## Prerequisites
 
