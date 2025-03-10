@@ -1,12 +1,13 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ChatInput } from "../Chat/ChatInput";
 import { ChatMessages } from "../Chat/ChatMessages";
 import { useAppContext } from "@/contexts/AppContext";
 import { useExploreModeContext } from "@/contexts/ExploreModeContext";
 import { useExploreChat } from "@/hooks/useExploreChat";
-import { Button } from "@nextui-org/react";
+import { Button, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@nextui-org/react";
 import { Suggestion, Suggestions } from "../Chat/components/Suggestions";
 import RecentChats from "./RecentChats";
+import { emergencyStorageCleanup } from "@/utils/storageCleanup";
 
 export const ExploreChat = () => {
   const { currentChatId, setCurrentChatId, isChatStreaming, type } =
@@ -14,11 +15,42 @@ export const ExploreChat = () => {
   const { showRecentChats, setShowRecentChats } = useExploreModeContext();
   const { messages, sendMessage, clearChat, messagesEndRef, stopStreaming } =
     useExploreChat();
+  
+  // State for storage warning modal
+  const [isStorageWarningOpen, setIsStorageWarningOpen] = useState(false);
+  const [cleanupItemsCount, setCleanupItemsCount] = useState(0);
 
   useEffect(() => {
     if (!currentChatId) {
       setCurrentChatId(`#${Date.now()}`);
     }
+    
+    // Set up error listener for quota exceeded errors
+    const handleStorageError = (event: ErrorEvent) => {
+      // Check if the error is related to localStorage quota
+      if (
+        event.message.includes('QuotaExceededError') ||
+        event.message.includes('exceeded the quota') ||
+        event.message.includes('QUOTA_EXCEEDED_ERR')
+      ) {
+        console.warn('Storage quota exceeded, performing emergency cleanup');
+        
+        // Run the emergency cleanup
+        const count = emergencyStorageCleanup();
+        setCleanupItemsCount(count);
+        
+        // Show the warning modal
+        setIsStorageWarningOpen(true);
+      }
+    };
+    
+    // Add event listener
+    window.addEventListener('error', handleStorageError);
+    
+    return () => {
+      // Remove event listener on cleanup
+      window.removeEventListener('error', handleStorageError);
+    };
   }, [currentChatId, setCurrentChatId]);
 
   const handleSendMessage = (message: string) => {
@@ -35,6 +67,13 @@ export const ExploreChat = () => {
   // Toggle Recent Chats panel
   const toggleRecentChats = () => {
     setShowRecentChats(!showRecentChats);
+  };
+
+  // Manual storage cleanup handler
+  const handleManualCleanup = () => {
+    const count = emergencyStorageCleanup();
+    setCleanupItemsCount(count);
+    setIsStorageWarningOpen(true);
   };
 
   return (
@@ -77,6 +116,30 @@ export const ExploreChat = () => {
               History
             </Button>
             <Button
+              onPress={handleManualCleanup}
+              isDisabled={isChatStreaming}
+              color="warning"
+              variant="flat"
+              size="sm"
+              className="min-w-unit-16"
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                className="h-4 w-4 mr-1" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
+                />
+              </svg>
+              Clean Storage
+            </Button>
+            <Button
               onPress={handleClearChat}
               isDisabled={isChatStreaming}
               color="default"
@@ -103,6 +166,32 @@ export const ExploreChat = () => {
           </div>
         </div>
       </div>
+
+      {/* Storage Warning Modal */}
+      <Modal isOpen={isStorageWarningOpen} onClose={() => setIsStorageWarningOpen(false)}>
+        <ModalContent>
+          <ModalHeader className="flex flex-col gap-1">Storage Quota Warning</ModalHeader>
+          <ModalBody>
+            <p>
+              Your browser storage quota was exceeded. This usually happens when exploring many pages
+              with large images and screenshots.
+            </p>
+            <p className="mt-2">
+              {cleanupItemsCount > 0 
+                ? `We've automatically cleaned up ${cleanupItemsCount} items from your storage.` 
+                : "We've attempted to clean up your storage."}
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button 
+              color="primary" 
+              onPress={() => setIsStorageWarningOpen(false)}
+            >
+              Got it
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
       
       {/* Recent Chats Panel */}
       {showRecentChats && (

@@ -14,12 +14,15 @@ import { AppProvider } from "./contexts/AppContext";
 import { NextUIProvider } from "@nextui-org/react";
 import "./App.css";
 import { ExploreModeProvider } from "@/contexts/ExploreModeContext.tsx";
+import StorageManager from "./components/StorageManager/StorageManager";
 
 function App() {
   return (
     <NextUIProvider>
       <AppProvider>
         <ExploreModeProvider>
+          {/* Background component that manages storage cleanup */}
+          <StorageManager />
           <Router>
             <div className="fixed inset-0 flex flex-col bg-[#1e1e1e] overflow-hidden dark">
               {/* Header - fixed height */}

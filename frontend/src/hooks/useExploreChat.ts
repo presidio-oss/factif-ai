@@ -12,6 +12,14 @@ import {
   IExploreQueueItem,
 } from "@/types/message.types";
 import { updateCurrentSession, getSession, getSessionsList } from "@/utils/exploreHistoryManager";
+import { 
+  safeGetItem, 
+  safeSetItem, 
+  safeRemoveItem, 
+  pruneMessages, 
+  removeImageDataFromMessages,
+  cleanupOldChats 
+} from "@/utils/storageUtil";
 import { v4 as uuid } from "uuid";
 import { createEdgeOrNode } from "@/utils/graph.util.ts";
 import { StreamingSource } from "@/types/api.types.ts";
@@ -77,7 +85,7 @@ export const useExploreChat = () => {
   useEffect(() => {
     if (currentChatId) {
       const storedMessagesKey = `explore_chat_${currentChatId}`;
-      const storedMessages = localStorage.getItem(storedMessagesKey);
+      const storedMessages = safeGetItem(storedMessagesKey);
       
       if (storedMessages) {
         try {
@@ -97,6 +105,9 @@ export const useExploreChat = () => {
           console.error("Failed to parse stored explore messages:", error);
         }
       }
+      
+      // Clean up old chats to free space when loading a chat
+      cleanupOldChats(currentChatId);
     }
   }, [currentChatId]); // Re-run when chatId changes
 
@@ -107,15 +118,30 @@ export const useExploreChat = () => {
     // Only save when we have a chat ID and messages
     if (currentChatId && messages.length > 0) {
       const storedMessagesKey = `explore_chat_${currentChatId}`;
-      localStorage.setItem(storedMessagesKey, 
-        JSON.stringify(messages.map(msg => ({
+      
+      // Prune messages to control size
+      const prunedMessages = pruneMessages(messages);
+      
+      // For localStorage storage, remove large image data
+      const storageMessages = removeImageDataFromMessages(prunedMessages);
+      
+      // Try to save to localStorage
+      const success = safeSetItem(
+        storedMessagesKey, 
+        JSON.stringify(storageMessages.map(msg => ({
           ...msg,
           // Convert Date to ISO string for storage
           timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp
-        }))));
+        })))
+      );
+      
+      if (!success) {
+        console.warn('Failed to save chat messages to localStorage - likely quota exceeded');
+      }
         
       // Also save to the session system for automatic persistence
-      updateCurrentSession(currentChatId, messages, exploreGraphData.current);
+      // Use the original messages for the session (which might be stored differently)
+      updateCurrentSession(currentChatId, prunedMessages, exploreGraphData.current);
       
       // Update the sessions list in ExploreModeContext
       setRecentSessions(getSessionsList());
@@ -701,7 +727,7 @@ export const useExploreChat = () => {
       
       // Also clear the localStorage for this chat
       if (currentChatId) {
-        localStorage.removeItem(`explore_chat_${currentChatId}`);
+        safeRemoveItem(`explore_chat_${currentChatId}`);
       }
     }
   };

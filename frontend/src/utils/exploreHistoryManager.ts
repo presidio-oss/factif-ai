@@ -1,4 +1,11 @@
 import { IExploreGraphData, IExploreSession, IExploreSessionMeta } from "@/types/message.types";
+import { 
+  safeGetItem, 
+  safeSetItem, 
+  safeRemoveItem, 
+  removeImageDataFromMessages,
+  pruneMessages
+} from "./storageUtil";
 
 const MAX_SESSIONS = 5;
 const SESSIONS_LIST_KEY = 'explore_sessions_list';
@@ -9,7 +16,7 @@ const SESSION_PREFIX = 'explore_session_';
  */
 export const getSessionsList = (): IExploreSessionMeta[] => {
   try {
-    const sessionsList = localStorage.getItem(SESSIONS_LIST_KEY);
+    const sessionsList = safeGetItem(SESSIONS_LIST_KEY);
     return sessionsList ? JSON.parse(sessionsList) : [];
   } catch (error) {
     console.error('Failed to parse sessions list', error);
@@ -24,7 +31,7 @@ export const saveSessionsList = (sessions: IExploreSessionMeta[]): void => {
   try {
     // Ensure we keep only the most recent sessions
     const limitedSessions = sessions.slice(0, MAX_SESSIONS);
-    localStorage.setItem(SESSIONS_LIST_KEY, JSON.stringify(limitedSessions));
+    safeSetItem(SESSIONS_LIST_KEY, JSON.stringify(limitedSessions));
   } catch (error) {
     console.error('Failed to save sessions list', error);
   }
@@ -35,7 +42,7 @@ export const saveSessionsList = (sessions: IExploreSessionMeta[]): void => {
  */
 export const getSession = (sessionId: string): IExploreSession | null => {
   try {
-    const sessionData = localStorage.getItem(`${SESSION_PREFIX}${sessionId}`);
+    const sessionData = safeGetItem(`${SESSION_PREFIX}${sessionId}`);
     return sessionData ? JSON.parse(sessionData) : null;
   } catch (error) {
     console.error(`Failed to parse session ${sessionId}`, error);
@@ -48,8 +55,40 @@ export const getSession = (sessionId: string): IExploreSession | null => {
  */
 export const saveSession = (session: IExploreSession): void => {
   try {
+    // Prepare session data for storage
+    const storageSession = { ...session };
+    
+    // Prune messages to control size
+    if (storageSession.messages) {
+      storageSession.messages = pruneMessages(storageSession.messages);
+      
+      // Remove large image data from messages
+      storageSession.messages = removeImageDataFromMessages(storageSession.messages);
+    }
+    
+    // Prune graph data if it's too large
+    if (storageSession.graphData && storageSession.graphData.nodes) {
+      // Remove image data from nodes to reduce size
+      storageSession.graphData = {
+        ...storageSession.graphData,
+        nodes: storageSession.graphData.nodes.map(node => {
+          if (node.data && node.data.imageData) {
+            // Create a copy without the image data
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                imageData: undefined // Remove the large image data
+              }
+            };
+          }
+          return node;
+        })
+      };
+    }
+    
     // Save the full session data
-    localStorage.setItem(`${SESSION_PREFIX}${session.id}`, JSON.stringify(session));
+    safeSetItem(`${SESSION_PREFIX}${session.id}`, JSON.stringify(storageSession));
     
     // Update the sessions list
     const sessionsList = getSessionsList();
@@ -77,7 +116,7 @@ export const saveSession = (session: IExploreSession): void => {
 export const deleteSession = (sessionId: string): void => {
   try {
     // Remove from localStorage
-    localStorage.removeItem(`${SESSION_PREFIX}${sessionId}`);
+    safeRemoveItem(`${SESSION_PREFIX}${sessionId}`);
     
     // Update the sessions list
     const sessionsList = getSessionsList();
