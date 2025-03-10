@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { cleanupOldExploreData } from '@/utils/storageCleanup';
 
 /**
@@ -6,15 +6,20 @@ import { cleanupOldExploreData } from '@/utils/storageCleanup';
  * This runs in the background and helps prevent quota exceeded errors
  */
 const StorageManager = () => {
-  // State to track last cleanup time
-  const [lastCleanup, setLastCleanup] = useState<Date | null>(null);
+  // Reference to track if component is mounted
+  const isMountedRef = useRef(true);
+  // Ref to track last cleanup time instead of state to avoid infinite rerenders
+  const lastCleanupRef = useRef<Date | null>(null);
   
   useEffect(() => {
+    // Set mounted flag
+    isMountedRef.current = true;
+    
     // Try to get last cleanup time from localStorage
     try {
       const storedTime = localStorage.getItem('storage_last_cleanup');
       if (storedTime) {
-        setLastCleanup(new Date(storedTime));
+        lastCleanupRef.current = new Date(storedTime);
       }
     } catch (e) {
       console.warn('Could not read last cleanup time:', e);
@@ -23,6 +28,8 @@ const StorageManager = () => {
     // Function to perform a cleanup
     const performCleanup = () => {
       try {
+        if (!isMountedRef.current) return;
+        
         // Clean up old data
         const removedCount = cleanupOldExploreData();
         if (removedCount > 0) {
@@ -32,7 +39,7 @@ const StorageManager = () => {
         // Update the last cleanup time
         const now = new Date();
         localStorage.setItem('storage_last_cleanup', now.toISOString());
-        setLastCleanup(now);
+        lastCleanupRef.current = now;
       } catch (e) {
         console.error('Error during scheduled cleanup:', e);
       }
@@ -40,21 +47,23 @@ const StorageManager = () => {
     
     // Check if we need to run a cleanup now
     const shouldCleanupNow = () => {
-      if (!lastCleanup) return true;
+      if (!lastCleanupRef.current) return true;
       
       // Calculate time since last cleanup
       const now = new Date();
       const hoursSinceLastCleanup = 
-        (now.getTime() - lastCleanup.getTime()) / (1000 * 60 * 60);
+        (now.getTime() - lastCleanupRef.current.getTime()) / (1000 * 60 * 60);
       
       // Run cleanup if it's been more than 24 hours
       return hoursSinceLastCleanup >= 24;
     };
     
-    // Run initial cleanup if needed
-    if (shouldCleanupNow()) {
-      performCleanup();
-    }
+    // Schedule the initial cleanup check after a short delay
+    const initialCleanupTimeout = setTimeout(() => {
+      if (shouldCleanupNow()) {
+        performCleanup();
+      }
+    }, 2000); // Delay initial cleanup to avoid render issues
     
     // Set up periodic check every hour
     const intervalId = setInterval(() => {
@@ -65,6 +74,8 @@ const StorageManager = () => {
     
     // Also clean up when storage is running low
     const checkStorageUsage = async () => {
+      if (!isMountedRef.current) return;
+      
       try {
         // Use the Storage API if available
         if (navigator.storage && navigator.storage.estimate) {
@@ -84,17 +95,25 @@ const StorageManager = () => {
       }
     };
     
+    // Schedule storage check with a delay to avoid render issues
+    const initialStorageCheckTimeout = setTimeout(() => {
+      checkStorageUsage();
+    }, 5000);
+    
     // Check storage usage every 5 minutes
     const storageCheckId = setInterval(checkStorageUsage, 5 * 60 * 1000);
     
-    // Initial storage check
-    checkStorageUsage();
-    
     return () => {
+      // Mark component as unmounted
+      isMountedRef.current = false;
+      
+      // Clean up all timers
+      clearTimeout(initialCleanupTimeout);
+      clearTimeout(initialStorageCheckTimeout);
       clearInterval(intervalId);
       clearInterval(storageCheckId);
     };
-  }, [lastCleanup]);
+  }, []); // Empty dependency array - setup only once
   
   // This is a background component, so it doesn't render anything
   return null;

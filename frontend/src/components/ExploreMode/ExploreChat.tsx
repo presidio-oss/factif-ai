@@ -97,7 +97,7 @@ export const ExploreChat = () => {
               color="default"
               variant="flat"
               size="sm"
-              className="min-w-unit-16"
+              className="min-w-unit-16 hidden"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -121,7 +121,7 @@ export const ExploreChat = () => {
               color="warning"
               variant="flat"
               size="sm"
-              className="min-w-unit-16"
+              className="min-w-unit-16 hidden"
             >
               <svg 
                 xmlns="http://www.w3.org/2000/svg" 
