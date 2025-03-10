@@ -32,7 +32,7 @@ export class DockerVNCService extends BaseStreamingService {
 
     try {
       const containerStatus = await DockerCommands.checkContainerStatus(
-        this.config.containerName,
+        this.config.containerName
       );
 
       if (containerStatus.exists && containerStatus.id) {
@@ -41,13 +41,13 @@ export class DockerVNCService extends BaseStreamingService {
         if (!containerStatus.running) {
           this.emitConsoleLog(
             "info",
-            `Starting existing container ${this.containerId}...`,
+            `Starting existing container ${this.containerId}...`
           );
           await DockerCommands.startContainer(this.containerId);
         } else {
           this.emitConsoleLog(
             "info",
-            `Using running container ${this.containerId}`,
+            `Using running container ${this.containerId}`
           );
         }
 
@@ -59,7 +59,7 @@ export class DockerVNCService extends BaseStreamingService {
         await this.setupLogStreams();
         this.emitConsoleLog(
           "info",
-          "Connected to existing Ubuntu Docker VNC container",
+          "Connected to existing Ubuntu Docker VNC container"
         );
         return {
           status: "success",
@@ -88,7 +88,7 @@ export class DockerVNCService extends BaseStreamingService {
     } catch (error: any) {
       this.emitConsoleLog(
         "error",
-        `VNC initialization error: ${error.message || "Unknown error"}`,
+        `VNC initialization error: ${error.message || "Unknown error"}`
       );
       await this.cleanup();
       throw error;
@@ -177,7 +177,7 @@ export class DockerVNCService extends BaseStreamingService {
     } catch (error: any) {
       this.emitConsoleLog(
         "error",
-        `Screenshot error: ${error.message || "Unknown error"}`,
+        `Screenshot error: ${error.message || "Unknown error"}`
       );
       return null;
     }
@@ -185,7 +185,7 @@ export class DockerVNCService extends BaseStreamingService {
 
   async performAction(
     action: ActionRequest,
-    params?: any,
+    params?: any
   ): Promise<ActionResponse> {
     if (!this.isInitialized || !this.isConnected || !this.containerId) {
       return {
@@ -199,18 +199,30 @@ export class DockerVNCService extends BaseStreamingService {
       return await DockerActions.performAction(
         this.containerId,
         action,
-        params,
+        params
       );
     } catch (error: any) {
       this.emitConsoleLog(
         "error",
-        `VNC action error: ${error.message || "Unknown error"}`,
+        `VNC action error: ${error.message || "Unknown error"}`
       );
       return {
         status: "error",
         message: error.message || "VNC action failed",
       };
     }
+  }
+
+  async getCurrentUrl() {
+    if (!this.isInitialized || !this.isConnected || !this.containerId) {
+      return {
+        status: "error",
+        message: "VNC not initialized",
+
+        screenshot: "",
+      };
+    }
+    return await DockerActions.getUrl(this.containerId);
   }
 
   async cleanup(): Promise<void> {
@@ -230,7 +242,7 @@ export class DockerVNCService extends BaseStreamingService {
 
     this.emitConsoleLog(
       "info",
-      "VNC resources cleaned up, container left running",
+      "VNC resources cleaned up, container left running"
     );
   }
 }

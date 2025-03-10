@@ -35,7 +35,9 @@ export const Chat = () => {
           <div className="flex flex-col items-start">
             <h2 className="text-foreground text-lg font-normal mb-0.5">Chat</h2>
             {currentChatId && (
-              <span className="text-xs text-foreground/60">{currentChatId}</span>
+              <span className="text-xs text-foreground/60">
+                {currentChatId}
+              </span>
             )}
           </div>
           <Button
@@ -68,7 +70,10 @@ export const Chat = () => {
         <div className="absolute inset-0">
           <div className="h-full overflow-y-auto">
             <div className="px-6">
-              <ChatMessages messages={messages} messagesEndRef={messagesEndRef} />
+              <ChatMessages
+                messages={messages}
+                messagesEndRef={messagesEndRef}
+              />
             </div>
             {!hasUserInteraction && (
               <div className="absolute inset-0 flex items-center justify-center p-6">
@@ -79,7 +84,7 @@ export const Chat = () => {
         </div>
       </div>
       <div className="border-t border-content3 px-6">
-        <ChatInput 
+        <ChatInput
           onSendMessage={handleSendMessage}
           isStreaming={isChatStreaming}
           onStopStreaming={stopStreaming}

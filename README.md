@@ -20,9 +20,9 @@
 </div>
 <br>
 
-# 🚀 Factif AI
+# 🚀 Factifai
 
-**Factif AI** revolutionizes test automation by directly controlling your computer through AI. Using built-in vision capabilities of Claude, OpenAI, and Gemini along with computer use, it can navigate any application naturally - clicking, typing, and verifying results just like a human would.
+**Factifai** revolutionizes test automation by directly controlling your computer through AI. Using built-in vision capabilities of Claude, OpenAI, and Gemini along with computer use, it can navigate any application naturally - clicking, typing, and verifying results just like a human would.
 
 <div align="center">
 <img src="assets/gifs/factif-ai-demo.gif" alt="FACTIF-AI in action" width="900"/>
@@ -33,13 +33,14 @@
 - [✨ Key Features](#-key-features)
 - [📥 Getting Started](#-getting-started)
 - [🖥️ Automation Modes](#️-automation-modes)
+- [🔍 Explore Mode](#-explore-mode)
 - [🤝 Contributing](#-contributing)
 - [📄 License](#-license)
 - [📧 Contact](#-contact)
 
 ## 🌟 Overview
 
-In today's fast-paced software development landscape, efficient testing is crucial for delivering high-quality applications. Factif AI transforms how teams approach testing by combining AI vision with direct computer control, enabling natural interaction with applications.
+In today's fast-paced software development landscape, efficient testing is crucial for delivering high-quality applications. Factifai transforms how teams approach testing by combining AI vision with direct computer control, enabling natural interaction with applications.
 
 ## ✨ Key Features
 
@@ -93,7 +94,7 @@ For detailed configuration options, see:
 
 ## 🖥️ Automation Modes
 
-Factif AI offers two powerful modes of automation to cover all your testing needs:
+Factifai offers two powerful modes of automation to cover all your testing needs:
 
 <div align="center">
 <img src="assets/gifs/factif-ai-preview.gif" alt="FACTIF-AI in action" width="900"/>
@@ -126,6 +127,26 @@ Features:
 - **Cross-Platform**: Test across different platforms
 - **Full Control**: Complete system automation
 
+## 🔍 Explore Mode
+
+Explore Mode enables you to map and visualize web applications through AI-powered exploration and generates detailed documenation:
+
+<div align="center">
+<img src="assets/gifs/factif-ai-explore-mode.gif" alt="FACTIF-AI Explore Mode in action" width="900"/>
+</div>
+
+### Features
+
+- **Interactive Mapping**: Automatically detect and visualize any website structure
+- **Element Detection**: AI identifies clickable elements like buttons, links, and navigation items
+- **Route Classification**: Smart categorization of different application pages and routes
+- **Visual Graph**: Interactive visualization of application architecture and navigation paths along with detailed documentation
+
+### Key Benefits
+
+- **Accelerated Discovery**: Quickly understand a new applications without manual exploration of all the pages
+- **Visual Documentation**: Automatically generate visual maps of application structure
+- **Enhanced Testing**: Use discovered paths to create comprehensive test scenarios
 ## 🤝 Contributing
 
 To contribute to the project, start by exploring [open issues](https://github.com/presidio-oss/factif-ai/issues) or checking our [feature request board](https://github.com/presidio-oss/factif-ai/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop).

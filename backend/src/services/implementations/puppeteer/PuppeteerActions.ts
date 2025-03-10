@@ -15,7 +15,7 @@ export class PuppeteerActions {
 
   static async click(
     page: Page,
-    action: ActionRequest,
+    action: ActionRequest
   ): Promise<ActionResponse> {
     if (!action || !action.coordinate) {
       return {
@@ -28,7 +28,7 @@ export class PuppeteerActions {
       try {
         const element = document.elementFromPoint(
           coordinate.x,
-          coordinate.y,
+          coordinate.y
         ) as Element;
         const { top } = element.getBoundingClientRect();
 
@@ -86,6 +86,7 @@ export class PuppeteerActions {
     if (!action) {
       throw new Error("Text is required for type action");
     }
+
     if (!action.coordinate || !action.text) {
       return {
         status: "error",
@@ -142,7 +143,7 @@ export class PuppeteerActions {
 
   static async keyPress(
     page: Page,
-    action: ActionRequest,
+    action: ActionRequest
   ): Promise<ActionResponse> {
     if (!action.key)
       return {
@@ -221,5 +222,9 @@ export class PuppeteerActions {
 
   static async captureScreenshot() {
     return await PuppeteerActions.puppeteerService.captureScreenshotAndInfer();
+  }
+
+  static async getCurrentUrl() {
+    return await PuppeteerActions.puppeteerService.getCurrentUrl();
   }
 }

@@ -7,8 +7,8 @@ ENV DEBIAN_PRIORITY=high
 # Set environment variables
 ENV DISPLAY_NUM=99
 ENV DISPLAY=:${DISPLAY_NUM}
-ENV WIDTH=1024
-ENV HEIGHT=768
+ENV WIDTH=1280
+ENV HEIGHT=800
 
 # Install required packages
 RUN apt-get update && apt-get install -y \
@@ -31,6 +31,8 @@ RUN apt-get update && apt-get install -y \
     scrot \
     gnome-screenshot \
     xdotool \
+    xsel \
+    xclip \
     && add-apt-repository ppa:mozillateam/ppa \
     && apt-get update \
     && apt-get install -y --no-install-recommends \

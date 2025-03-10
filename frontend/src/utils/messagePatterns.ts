@@ -1,44 +1,11 @@
-import { OmniParserResult } from "../types/chat.types";
-
-export interface FollowupQuestion {
-  type: "followup_question";
-  question: string;
-}
-
-export interface CompleteTask {
-  type: "complete_task";
-  result: string;
-  command?: string;
-}
-
-export interface PerformAction {
-  type: "perform_action";
-  action: string;
-  url?: string;
-  coordinate?: string;
-  text?: string;
-  key?: string;
-}
-
-export interface ActionResult {
-  type: "action_result";
-  status: "success" | "error";
-  message: string;
-  screenshot?: string;
-  omniParserResult: OmniParserResult;
-}
-
-export type MessagePart =
-  | FollowupQuestion
-  | CompleteTask
-  | PerformAction
-  | ActionResult
-  | { type: "text"; content: string };
-
-export interface IProcessedMessagePart {
-  length: number;
-  part: MessagePart;
-}
+import {
+  ActionResult,
+  CompleteTask,
+  FollowupQuestion,
+  IProcessedMessagePart,
+  MessagePart,
+  PerformAction,
+} from "@/types/message.types.ts";
 
 export class MessagePatterns {
   private static patterns = {
@@ -50,6 +17,8 @@ export class MessagePatterns {
       /<perform_action>[\s\S]*?<action>(.*?)<\/action>(?:[\s\S]*?<url>(.*?)<\/url>)?(?:[\s\S]*?<coordinate>(.*?)<\/coordinate>)?(?:[\s\S]*?<text>(.*?)<\/text>)?(?:[\s\S]*?<key>(.*?)<\/key>)?(?:[\s\S]*?<about_this_action>(.*?)<\/about_this_action>)?(?:[\s\S]*?<marker_number>(.*?)<\/marker_number>)?[\s\S]*?<\/perform_action>/s,
     actionResult:
       /<perform_action_result>[\s\S]*?<action_status>(success|error)<\/action_status>[\s\S]*?<action_message>(.*?)<\/action_message>(?:[\s\S]*?<screenshot>(.*?)<\/screenshot>)?(?:[\s\S]*?<omni_parser>(.*?)<\/omni_parser>)?[\s\S]*?<\/perform_action_result>/s,
+    exploreOutput:
+      /<explore_output>[\s\n]* <clickable_element>[\s\n](?:<text>[\s\S]*?<\/text>)?(?:[\s\n]*<coordinates>[\s\S]*?<\/coordinates>)?(?:[\s\n]*<about_this_element>[\s\S]*?<\/about_this_element>)?[\s\n]*<\/clickable_element>[\s\n]*<\/explore_output>/s,
   };
 
   static parseMessage(text: string): MessagePart[] {
@@ -76,6 +45,11 @@ export class MessagePatterns {
         open: "<perform_action_result>",
         close: "</perform_action_result>",
         processor: this.performActionResultMatch.bind(this),
+      },
+      {
+        open: "<explore_output>",
+        close: "</explore_output>",
+        processor: this.processExploreOutput.bind(this),
       },
     ];
 
@@ -244,6 +218,29 @@ export class MessagePatterns {
       ...(match[3] && { coordinate: match[3] }),
       ...(match[4] && { text: match[4] }),
       ...(match[5] && { key: match[5] }),
+    };
+  }
+
+  static processExploreOutput(inputString: string): IProcessedMessagePart {
+    const regex =
+      /<clickable_element>[\s\S]*?<text>(.*?)<\/text>[\s\S]*?<coordinates>(.*?)<\/coordinates>[\s\S]*?<about_this_element>(.*?)<\/about_this_element>[\s\S]*?<\/clickable_element>/g;
+    const clickableElements = [];
+    let match;
+
+    while ((match = regex.exec(inputString)) !== null) {
+      clickableElements.push({
+        text: match[1].trim(),
+        coordinates: match[2].trim(),
+        aboutThisElement: match[3].trim(),
+      });
+    }
+
+    return {
+      part: {
+        type: "explore_output",
+        clickableElements,
+      },
+      length: inputString.length,
     };
   }
 }

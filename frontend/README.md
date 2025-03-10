@@ -1,6 +1,6 @@
-# Factif AI Frontend
+# Factifai Frontend
 
-This is the frontend application for Factif AI, built with React, TypeScript, and Vite.
+This is the frontend application for Factifai, built with React, TypeScript, and Vite.
 
 ## Prerequisites
 
