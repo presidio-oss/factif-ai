@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+### New Feature: Explore Mode
+
+- **Explore Chat**: Specialized chat interface for Click-through exploration of interconnected web content of a website.
+- **Graph View**: Visual representation of web pages and their relationships for easier navigation and understanding of site structure
+- **Page Node System**: Interactive page nodes that display content and allow navigation between related pages
+- **Recent Chats**: Easy access to previous explore mode conversations
+
 ## 1.1.0
 
 ### Enhancements
