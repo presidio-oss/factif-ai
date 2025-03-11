@@ -16,7 +16,7 @@ import {
 import { IExploredNode } from "@/types/message.types.ts";
 import { useExploreModeContext } from "@/contexts/ExploreModeContext.tsx";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useState, useEffect, useMemo } from "react";
+import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import PageNode from "@/components/ExploreMode/PageNode.tsx";
 import {
   RouteClassifierService,
@@ -59,7 +59,6 @@ const getCategoryIcon = (category: string) => {
   }
 };
 
-// Get custom styles based on category
 // Get custom styles based on category
 const getHeaderStyle = (category: string) => {
   const baseStyle =
@@ -178,6 +177,12 @@ export function ExploreGraph() {
   >({});
   const [isClassifying, setIsClassifying] = useState<boolean>(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  
+  // State to store category containers that persists during updates
+  const [categoryContainers, setCategoryContainers] = useState<Node[]>([]);
+  
+  // Use ref to track last update and prevent flicker during rapid updates
+  const updateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Convert IExploredNode[] to Node[] with proper mapping and safety checks
   const convertToNodes = useCallback(
@@ -394,7 +399,34 @@ export function ExploreGraph() {
   useEffect(() => {
     if (!graphData) return;
 
-    setNodes(convertToNodes(graphData.nodes));
+    // Map of current node IDs to their categories and descriptions
+    const categoryMap = new Map();
+    nodes.forEach(node => {
+      if (node.id && node.data?.category) {
+        categoryMap.set(node.id, {
+          category: node.data.category,
+          categoryDescription: node.data.categoryDescription
+        });
+      }
+    });
+    
+    const newNodes = convertToNodes(graphData.nodes).map(node => {
+      if (node.id && categoryMap.has(node.id)) {
+        // Preserve category info for existing nodes
+        const categoryInfo = categoryMap.get(node.id);
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            category: categoryInfo.category,
+            categoryDescription: categoryInfo.categoryDescription
+          }
+        };
+      }
+      return node;
+    });
+    
+    setNodes(newNodes);
     setEdges(
       graphData.edges
         ? (graphData.edges.map((edge) => ({
@@ -582,82 +614,99 @@ export function ExploreGraph() {
     return Array.from(categories);
   }, [nodes]);
 
-  // Create category label nodes and update them when nodes move
-  const categoryLabelNodes = useMemo(() => {
-    // Group nodes by normalized category
-    const groupedNodes: Record<string, Node[]> = {};
+  // Create category label nodes and store them in persistent state
+  // This debounced implementation prevents flickering during rapid updates
+  useEffect(() => {
+    if (!validNodes.length) return;
+    
+    // Clear any pending updates
+    if (updateTimerRef.current) {
+      clearTimeout(updateTimerRef.current);
+    }
 
-    // First ensure all categories are normalized to lowercase and handle 'unknown'
-    validNodes.forEach((node) => {
-      let category = (
-        (node.data?.category as string) || "uncategorized"
-      ).toLowerCase();
+    // Debounce the container updates to prevent flickering during typing
+    updateTimerRef.current = setTimeout(() => {
+      // Group nodes by normalized category
+      const groupedNodes: Record<string, Node[]> = {};
 
-      // Normalize different versions of unknown/uncategorized
-      if (category === "unknown" || category === "") {
-        category = "uncategorized";
-      }
+      // Normalize all categories
+      validNodes.forEach((node) => {
+        let category = (
+          (node.data?.category as string) || "uncategorized"
+        ).toLowerCase();
 
-      if (!groupedNodes[category]) {
-        groupedNodes[category] = [];
-      }
-      groupedNodes[category].push(node);
-    });
+        // Normalize different versions of unknown/uncategorized
+        if (category === "unknown" || category === "") {
+          category = "uncategorized";
+        }
 
-    // Create one container per category containing ALL nodes of that category
-    return Object.entries(groupedNodes)
-      .map(([category, nodesInCategory]) => {
-        if (nodesInCategory.length === 0) return null;
+        if (!groupedNodes[category]) {
+          groupedNodes[category] = [];
+        }
+        groupedNodes[category].push(node);
+      });
 
-        // Calculate bounding box that encompasses ALL nodes in this category
-        const allXCoordinates = nodesInCategory.map((n) => n.position.x);
-        const allYCoordinates = nodesInCategory.map((n) => n.position.y);
+      // Create one container per category
+      const newCategoryNodes = Object.entries(groupedNodes)
+        .map(([category, nodesInCategory]) => {
+          if (nodesInCategory.length === 0) return null;
 
-        const minX = Math.min(...allXCoordinates) - 45;
-        const minY = Math.min(...allYCoordinates) - 90;
+          // Calculate bounding box 
+          const allXCoordinates = nodesInCategory.map((n) => n.position.x);
+          const allYCoordinates = nodesInCategory.map((n) => n.position.y);
 
-        // Account for node width/height when calculating max coordinates
-        const maxX = Math.max(
-          ...nodesInCategory.map((n) => n.position.x + 190),
-        );
-        const maxY =
-          Math.max(...nodesInCategory.map((n) => n.position.y + 150)) + 30;
+          const minX = Math.min(...allXCoordinates) - 45;
+          const minY = Math.min(...allYCoordinates) - 90;
 
-        const width = maxX - minX;
-        const height = maxY - minY;
+          const maxX = Math.max(
+            ...nodesInCategory.map((n) => n.position.x + 190),
+          );
+          const maxY =
+            Math.max(...nodesInCategory.map((n) => n.position.y + 150)) + 30;
 
-        // Create one background container node per category with matching styles to GroupNode
-        return {
-          id: `category-${category}`,
-          position: { x: minX, y: minY },
-          style: {
-            width,
-            height,
-            background: "transparent", // Background now handled by the GroupNode component
-            zIndex: -1,
-            borderRadius: "9px",
-            cursor: "grab",
-            padding: '0px'
-          },
-          data: {
-            label: category.toUpperCase(),
-            nodeCount: nodesInCategory.length,
-            // Pass any additional custom styling parameters here if needed
-            customStyles: {
-              category: category,
-              color: getCategoryColor(category),
+          const width = maxX - minX;
+          const height = maxY - minY;
+          
+          // Create container node
+          return {
+            id: `category-${category}`,
+            position: { x: minX, y: minY },
+            style: {
+              width,
+              height,
+              background: "transparent",
+              zIndex: -1,
+              borderRadius: "9px",
+              cursor: "grab",
+              padding: '0px'
             },
-          },
-          type: "group",
-          // Make category container follow its nodes when they move
-          parentNode: undefined,
-          extent: undefined,
-          expandParent: false,
-          draggable: true,
-        };
-      })
-      .filter(Boolean) as Node[];
-  }, [validNodes]);
+            data: {
+              label: category.toUpperCase(),
+              nodeCount: nodesInCategory.length,
+              customStyles: {
+                category: category,
+                color: getCategoryColor(category),
+              },
+            },
+            type: "group",
+            parentNode: undefined,
+            extent: undefined,
+            expandParent: false,
+            draggable: true,
+          };
+        })
+        .filter(Boolean) as Node[];
+      
+      // Update category containers with new positions
+      setCategoryContainers(newCategoryNodes);
+    }, 200); // 200ms debounce
+    
+    return () => {
+      if (updateTimerRef.current) {
+        clearTimeout(updateTimerRef.current);
+      }
+    };
+  }, [validNodes, routeCategories]);
 
   // Update the edges when they change to ensure they remain curved and non-overlapping
   useEffect(() => {
@@ -686,7 +735,6 @@ export function ExploreGraph() {
                 strokeWidth: 2,
                 transition: "all 0.3s ease"
               },
-          // Use different styles for different categories
           pathOptions: { offset: 15 },
         };
       }),
@@ -696,7 +744,7 @@ export function ExploreGraph() {
   return (
     <div style={{ width: "100%", height: "100%" }}>
       <ReactFlow
-        nodes={[...categoryLabelNodes, ...validNodes]}
+        nodes={[...categoryContainers, ...validNodes]}
         edges={validEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
