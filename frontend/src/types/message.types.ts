@@ -90,6 +90,7 @@ export interface IExploreQueueItem {
   url: string;
   id: string;
   nodeId: string;
+  screenshot?: string; // Screenshot of the feature/element for documentation
   parent: {
     id: string;
     url: string;

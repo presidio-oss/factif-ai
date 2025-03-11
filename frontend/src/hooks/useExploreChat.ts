@@ -355,7 +355,18 @@ export const useExploreChat = () => {
       id: string;
       nodeId: string;
     } | null,
+    imageData?: string | IProcessedScreenshot,
   ) => {
+    // Track if we have valid image data to save with the elements
+    let processedImageData: string | undefined;
+    if (imageData) {
+      if (typeof imageData === "string") {
+        processedImageData = imageData;
+      } else if (typeof imageData === "object" && imageData.image) {
+        processedImageData = imageData.image;
+      }
+    }
+
     for (const element of processedExploreMessage) {
       if (element.text && element.coordinates) {
         const elementId = uuid();
@@ -367,6 +378,8 @@ export const useExploreChat = () => {
           url,
           id: elementId,
           nodeId,
+          // Store the screenshot with each element for documentation
+          screenshot: processedImageData,
           parent: {
             url: (parent?.url as string) || url,
             nodeId: (parent?.nodeId as string) || nodeId,
@@ -432,6 +445,7 @@ export const useExploreChat = () => {
           url,
           nodeId,
           parent,
+          imageData
         );
       } else if (exploreQueue.current[url].length === 0) {
         // If we've seen this URL before but its queue is empty, update with new elements
@@ -446,6 +460,7 @@ export const useExploreChat = () => {
             url,
             existingNode.id,
             parent,
+            imageData
           );
           console.log(`Updated elements for existing route: ${url}`);
         }
@@ -576,14 +591,24 @@ export const useExploreChat = () => {
     
     if (nextElementToVisit) {
       setType("action");
-      const message = `In ${nextElementToVisit.url} \n Visit ${nextElementToVisit.text} on coordinate : ${nextElementToVisit.coordinates} with about this element : ${nextElementToVisit.aboutThisElement}. You can decide what to do prior to it.`;
+      
+      // Use the element's saved screenshot if available, otherwise use the current page screenshot
+      // This ensures we document the state of the page when the element was found
+      const elementScreenshot = nextElementToVisit.screenshot || 
+        (typeof imageData === "string" ? imageData : imageData?.image);
+      
+      // Include a direct instruction to take a screenshot after navigation
+      const message = `In ${nextElementToVisit.url} \n Visit ${nextElementToVisit.text} on coordinate : ${nextElementToVisit.coordinates} with about this element : ${nextElementToVisit.aboutThisElement}. After clicking on this element you MUST take a screenshot by performing a click action. This screenshot is important for complete documentation of this feature.`;
+      
       addMessage({
         text: message,
         timestamp: new Date(),
         isUser: true,
         isHistory: true, // Mark as history so it's included in persistence
       });
-      await handleExploreMessage(message, "action", imageData, undefined);
+      
+      // Pass the element's screenshot to ensure it gets saved
+      await handleExploreMessage(message, "action", elementScreenshot || imageData, undefined);
     } else {
       // No more elements to explore
       setIsChatStreaming(false);
