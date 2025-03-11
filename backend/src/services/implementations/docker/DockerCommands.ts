@@ -77,26 +77,163 @@ export class DockerCommands {
       errorMessage: "Failed to start container",
     });
 
+    console.log("Ensuring X server is running...");
+
+    // First check if environment variables are properly set
+    try {
+      const envOutput = await this.executeCommand({
+        command: ["exec", containerId, "env"],
+        successMessage: "Retrieved container environment",
+      });
+      
+      console.log(`Container environment: ${envOutput}`);
+      
+      if (!envOutput.includes("DISPLAY=")) {
+        console.log("DISPLAY not set in environment, setting it explicitly");
+        await this.executeCommand({
+          command: ["exec", containerId, "export", "DISPLAY=:99"],
+          successMessage: "Set DISPLAY environment variable",
+        });
+      }
+    } catch (error) {
+      console.error("Could not check container environment:", error);
+    }
+
+    // Explicitly restart Xvfb to ensure it's running with our settings
+    try {
+      console.log("Killing any existing Xvfb processes...");
+      await this.executeCommand({
+        command: ["exec", containerId, "pkill", "Xvfb"],
+      }).catch(() => {
+        // Ignore errors if Xvfb isn't running
+      });
+
+      console.log("Starting Xvfb...");
+      // Set required environment variables for Xvfb
+      await this.executeCommand({
+        command: [
+          "exec", 
+          "-d", 
+          "-e", "DISPLAY=:99", 
+          "-e", "DISPLAY_NUM=99", 
+          "-e", "WIDTH=1280", 
+          "-e", "HEIGHT=720", 
+          containerId, 
+          "/bin/bash", 
+          "-c",
+          "cd /app && ./xvfb_startup.sh"
+        ],
+        successMessage: "Started Xvfb"
+      });
+      
+      // Give Xvfb time to initialize
+      console.log("Waiting for Xvfb to initialize...");
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    } catch (error) {
+      console.error("Error restarting Xvfb:", error);
+    }
+
     // Wait for X server to be ready
-    let retries = 30;
+    let retries = 60; // Increased from 30 to 60 seconds
+    let errorMessages = [];
     while (retries > 0) {
       try {
         await this.executeCommand({
-          command: ["exec", containerId, "xdpyinfo"],
-          errorMessage: "X server not ready",
+          command: ["exec", "-e", "DISPLAY=:99", containerId, "xdpyinfo"],
         });
+        console.log("X server is ready");
         break;
       } catch (error) {
+        errorMessages.push(error instanceof Error ? error.message : String(error));
         retries--;
         if (retries === 0) {
-          throw new Error("X server failed to start");
+          console.error("X server check error logs:", errorMessages.join("\n"));
+          throw new Error("X server failed to start: Check for missing display or permissions issues");
+        }
+        // Log every 10 seconds
+        if (retries % 10 === 0) {
+          console.log(`Still waiting for X server, ${retries} attempts left`);
+          
+          // Try to get diagnostic information
+          try {
+            const ps = await this.executeCommand({
+              command: ["exec", containerId, "bash", "-c", "ps aux | grep X"]
+            });
+            console.log("X process status:", ps);
+          } catch (e) {
+            // Ignore
+          }
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
 
+    // Start window manager and panel
+    try {
+      console.log("Starting window manager and panel...");
+      
+      // Start mutter window manager with additional environment variables to prevent X11 warnings
+      await this.executeCommand({
+        command: [
+          "exec", 
+          "-d", 
+          "-e", "DISPLAY=:99", 
+          "-e", "MUTTER_DEBUG=0",  // Suppress debug output
+          "-e", "MUTTER_VERBOSE=0",  // Suppress verbose messages
+          containerId, 
+          "/bin/bash", 
+          "-c",
+          "cd /app && ./mutter_startup.sh"
+        ],
+        successMessage: "Started mutter window manager"
+      });
+      
+      // Give mutter time to initialize
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      
+      // Start tint2 panel
+      await this.executeCommand({
+        command: [
+          "exec", 
+          "-d", 
+          "-e", "DISPLAY=:99", 
+          containerId, 
+          "/bin/bash", 
+          "-c",
+          "cd /app && ./tint2_startup.sh"
+        ],
+        successMessage: "Started tint2 panel"
+      });
+      
+      // Give tint2 time to initialize
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      
+      // Start PCManFM for desktop icons using the dedicated script
+      await this.executeCommand({
+        command: [
+          "exec", 
+          "-d", 
+          "-e", "DISPLAY=:99",
+          "-e", "HOME=/home/computeruse", // Ensure HOME is set correctly for config
+          containerId, 
+          "/bin/bash",
+          "-c",
+          "cd /app && chmod +x ./pcmanfm_startup.sh && ./pcmanfm_startup.sh"
+        ],
+        successMessage: "Started desktop manager"
+      });
+      
+      // Give PCManFM time to initialize
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } catch (error) {
+      console.error("Failed to start window manager and panel:", error);
+      // Continue even if window manager fails, as VNC might still work
+    }
+    
     // Restart VNC services
     try {
+      console.log("Starting VNC services...");
+      
       // Kill any existing VNC processes
       await this.executeCommand({
         command: ["exec", containerId, "pkill", "-f", "x11vnc"],
@@ -109,6 +246,7 @@ export class DockerCommands {
       }).catch(() => {}); // Ignore if no process exists
 
       // Set environment variables and start x11vnc
+      console.log("Starting x11vnc...");
       await this.executeCommand({
         command: [
           "exec",
@@ -190,6 +328,28 @@ export class DockerCommands {
       return output.includes(":5900") && output.includes(":6080");
     } catch (error) {
       return false;
+    }
+  }
+  
+  static async checkServiceDetailed(containerId: string): Promise<{ vncReady: boolean, noVncReady: boolean }> {
+    try {
+      const output = await this.executeCommand({
+        command: ["exec", containerId, "netstat", "-tuln"],
+      });
+      
+      const vncReady = output.includes(":5900");
+      const noVncReady = output.includes(":6080");
+      
+      return {
+        vncReady,
+        noVncReady
+      };
+    } catch (error) {
+      console.error("Failed to check service status:", error);
+      return {
+        vncReady: false,
+        noVncReady: false
+      };
     }
   }
 

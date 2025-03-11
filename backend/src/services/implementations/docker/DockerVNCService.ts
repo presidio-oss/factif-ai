@@ -52,7 +52,8 @@ export class DockerVNCService extends BaseStreamingService {
         }
 
         await this.waitForServices();
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        this.emitConsoleLog("info", "Allowing extra time for VNC services to stabilize...");
+        await new Promise((resolve) => setTimeout(resolve, 5000));
 
         this.isConnected = true;
         this.isInitialized = true;
@@ -73,7 +74,8 @@ export class DockerVNCService extends BaseStreamingService {
       this.containerId = containerId;
 
       await this.waitForServices();
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      this.emitConsoleLog("info", "Allowing extra time for VNC services to stabilize...");
+      await new Promise((resolve) => setTimeout(resolve, 5000));
 
       await this.setupLogStreams();
 
@@ -110,17 +112,35 @@ export class DockerVNCService extends BaseStreamingService {
     if (!this.containerId) throw new Error("No container ID available");
 
     let attempts = 0;
-    const maxAttempts = 30;
+    const maxAttempts = 60; // Increased timeout from 30 to 60 seconds
+    
+    this.emitConsoleLog("info", "Waiting for VNC services to start...");
 
     while (attempts < maxAttempts) {
-      if (await DockerCommands.checkService(this.containerId)) {
+      const serviceStatus = await DockerCommands.checkServiceDetailed(this.containerId);
+      
+      if (serviceStatus.vncReady && serviceStatus.noVncReady) {
+        this.emitConsoleLog("info", "All VNC services started successfully");
         return;
       }
+      
+      // Log which specific service we're waiting for
+      if (attempts % 5 === 0) {
+        if (!serviceStatus.vncReady && !serviceStatus.noVncReady) {
+          this.emitConsoleLog("info", `Waiting for VNC and noVNC services... [${attempts+1}/${maxAttempts}]`);
+        } else if (!serviceStatus.vncReady) {
+          this.emitConsoleLog("info", `Waiting for VNC service (port 5900)... [${attempts+1}/${maxAttempts}]`);
+        } else if (!serviceStatus.noVncReady) {
+          this.emitConsoleLog("info", `Waiting for noVNC service (port 6080)... [${attempts+1}/${maxAttempts}]`);
+        }
+      }
+      
       await new Promise((resolve) => setTimeout(resolve, 1000));
       attempts++;
     }
 
-    throw new Error("Timeout waiting for services to start");
+    // Enhanced error message with more details
+    throw new Error("Timeout waiting for services to start. Please check Docker logs for more information.");
   }
 
   private async setupLogStreams(): Promise<void> {
