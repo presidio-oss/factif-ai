@@ -388,11 +388,12 @@ export const useExploreChat = () => {
   ): Set<string> => {
     const routeSet = new Set(exploredRoutes);
     console.log(currentQueue);
-    // Object.keys(currentQueue)
-    //   .filter((key) => currentQueue[key].length === 0)
-    //   .forEach((key) => {
-    //     routeSet.delete(key);
-    //   });
+    // Remove routes that have empty queues
+    Object.keys(currentQueue)
+      .filter((key) => currentQueue[key].length === 0)
+      .forEach((key) => {
+        routeSet.delete(key);
+      });
     return routeSet;
   };
 
@@ -414,12 +415,16 @@ export const useExploreChat = () => {
       const url = await getCurrentUrl(streamingSource);
 
       if (!url) return;
-      if (!routeSet.has(url as string)) {
-        // if (routeSet.size > 0 && checkTheNewRouteIsFromSameDomain(url, routeSet.keys().next().value as string)){
-        //   return;
-        // }
-        routeSet.add(url as string);
+      
+      // Always process the elements for the current URL, whether we've seen it before or not
+      // This ensures we don't miss any clickable elements on pages we revisit
+      if (!exploreQueue.current[url]) {
         exploreQueue.current[url] = [];
+      }
+      
+      // Only add to routeSet if it's a new URL
+      if (!routeSet.has(url as string)) {
+        routeSet.add(url as string);
         const nodeId = handleEdgeAndNodeCreation(url, imageData);
         handleQueueUpdate(
           processedExploreMessage,
@@ -428,6 +433,22 @@ export const useExploreChat = () => {
           nodeId,
           parent,
         );
+      } else if (exploreQueue.current[url].length === 0) {
+        // If we've seen this URL before but its queue is empty, update with new elements
+        const existingNode = exploreGraphData.current.nodes.find(node => 
+          node.data.label === url
+        );
+        
+        if (existingNode) {
+          handleQueueUpdate(
+            processedExploreMessage,
+            fullResponse,
+            url,
+            existingNode.id,
+            parent,
+          );
+          console.log(`Updated elements for existing route: ${url}`);
+        }
       }
     }
 
@@ -438,21 +459,38 @@ export const useExploreChat = () => {
   };
 
   const getNextToExplore = () => {
-    const route =
-      exploreRoute.current.length > 0 ? exploreRoute.current[0] : null;
-    console.log("route ===>", route);
-    console.log("route ===>", exploreRoute.current);
-    console.log("route ===>", exploreQueue.current);
-    const nextItem = route ? exploreQueue.current[route].shift() : null;
-    if (route && nextItem) {
-      currentlyExploring.current = {
-        url: route,
-        id: nextItem.id,
-        nodeId: nextItem.nodeId,
-        label: nextItem.text,
-      };
+    console.log("exploreRoute.current ===>", exploreRoute.current);
+    console.log("exploreQueue.current ===>", exploreQueue.current);
+    
+    // Try each route in order until we find one with items in its queue
+    for (let i = 0; i < exploreRoute.current.length; i++) {
+      const route = exploreRoute.current[i];
+      if (route && exploreQueue.current[route] && exploreQueue.current[route].length > 0) {
+        // Found a route with items to explore
+        const nextItem = exploreQueue.current[route].shift();
+        if (nextItem) {
+          currentlyExploring.current = {
+            url: route,
+            id: nextItem.id,
+            nodeId: nextItem.nodeId,
+            label: nextItem.text,
+          };
+          
+          // If this isn't the first route, move it to the front for future checks
+          if (i > 0) {
+            // Move this route to the front of the array for the next iteration
+            exploreRoute.current.splice(i, 1);
+            exploreRoute.current.unshift(route);
+          }
+          
+          return nextItem;
+        }
+      }
     }
-    return nextItem;
+    
+    // No routes with items to explore found
+    console.log("No more items to explore in any route");
+    return null;
   };
 
   // Handle message completion
@@ -535,11 +573,9 @@ export const useExploreChat = () => {
     const nextElementToVisit = getNextToExplore();
     console.log("nextElementToVisit ===>", nextElementToVisit);
     isProcessing.current = false;
-    setType("action");
     
-    // Don't clear messages - we want to maintain chat history
-    // Instead, just proceed with the next element to visit
     if (nextElementToVisit) {
+      setType("action");
       const message = `In ${nextElementToVisit.url} \n Visit ${nextElementToVisit.text} on coordinate : ${nextElementToVisit.coordinates} with about this element : ${nextElementToVisit.aboutThisElement}. You can decide what to do prior to it.`;
       addMessage({
         text: message,
@@ -549,7 +585,22 @@ export const useExploreChat = () => {
       });
       await handleExploreMessage(message, "action", imageData, undefined);
     } else {
+      // No more elements to explore
       setIsChatStreaming(false);
+      setType("explore"); // Change back to explore mode
+      
+      // Calculate exploration statistics
+      const totalNodes = exploreGraphData.current.nodes.length;
+      const totalEdges = exploreGraphData.current.edges.length;
+      const uniqueRoutes = Object.keys(exploreQueue.current).length;
+      
+      // Add completion message
+      addMessage({
+        text: `✅ Exploration complete! I've visited all accessible links and elements.\n\nSummary:\n- ${totalNodes} pages explored\n- ${totalEdges} links followed\n- ${uniqueRoutes} unique routes discovered\n\nYou can now see the complete site map in the graph view. You can also start a new exploration or ask questions about what I found.`,
+        timestamp: new Date(),
+        isUser: false,
+        isHistory: true,
+      });
     }
   };
 
