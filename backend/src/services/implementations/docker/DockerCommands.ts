@@ -101,19 +101,41 @@ export class DockerCommands {
 
     // Explicitly restart Xvfb to ensure it's running with our settings
     try {
+      console.log("Preparing X server environment...");
+      
+      // Check if /tmp/.X11-unix exists and has proper permissions
+      await this.executeCommand({
+        command: ["exec", containerId, "bash", "-c", "mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix"],
+        successMessage: "Prepared X11 socket directory"
+      });
+      
+      // Clean up any stale X lock files that might be causing issues
+      console.log("Cleaning up any stale X server files...");
+      await this.executeCommand({
+        command: ["exec", containerId, "bash", "-c", "rm -f /tmp/.X99-lock /tmp/.X11-unix/X99"],
+        successMessage: "Cleaned up stale X server files"
+      });
+      
+      // Kill any existing Xvfb processes to ensure clean state
       console.log("Killing any existing Xvfb processes...");
       await this.executeCommand({
-        command: ["exec", containerId, "pkill", "Xvfb"],
+        command: ["exec", containerId, "pkill", "-f", "Xvfb"],
       }).catch(() => {
         // Ignore errors if Xvfb isn't running
+        console.log("No existing Xvfb processes to kill");
       });
 
-      console.log("Starting Xvfb...");
-      // Set required environment variables for Xvfb
+      // Create log directory for Xvfb
       await this.executeCommand({
+        command: ["exec", containerId, "mkdir", "-p", "/tmp/xvfb_logs"],
+        successMessage: "Created Xvfb log directory"
+      });
+
+      console.log("Starting Xvfb with detailed logging...");
+      // Start Xvfb with proper environment variables and logging
+      const xvfbOutput = await this.executeCommand({
         command: [
           "exec", 
-          "-d", 
           "-e", "DISPLAY=:99", 
           "-e", "DISPLAY_NUM=99", 
           "-e", "WIDTH=1280", 
@@ -126,11 +148,42 @@ export class DockerCommands {
         successMessage: "Started Xvfb"
       });
       
-      // Give Xvfb time to initialize
-      console.log("Waiting for Xvfb to initialize...");
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      console.log("Xvfb startup output:", xvfbOutput);
+      
+      // Check if the marker file exists to indicate successful startup
+      try {
+        await this.executeCommand({
+          command: ["exec", containerId, "test", "-f", "/tmp/xvfb_started_successfully"],
+        });
+        console.log("Xvfb startup marker file found - X server started successfully");
+      } catch (e) {
+        console.warn("Xvfb startup marker file not found - may indicate startup issues");
+        
+        // Tail the Xvfb log file to see what happened
+        try {
+          const xvfbLog = await this.executeCommand({
+            command: ["exec", containerId, "cat", "/tmp/xvfb_output.log"],
+          });
+          console.log("Xvfb log contents:", xvfbLog);
+        } catch (logError) {
+          console.error("Could not read Xvfb logs:", logError);
+        }
+      }
+      
+      // Give Xvfb time to fully initialize even if marker file exists
+      console.log("Waiting for Xvfb to fully initialize...");
+      await new Promise((resolve) => setTimeout(resolve, 5000));
     } catch (error) {
       console.error("Error restarting Xvfb:", error);
+      // Try to get logs for debugging
+      try {
+        const xvfbLog = await this.executeCommand({
+          command: ["exec", containerId, "cat", "/tmp/xvfb_output.log"],
+        });
+        console.error("Xvfb log contents for debugging:", xvfbLog);
+      } catch (logError) {
+        // Just continue if we can't get logs
+      }
     }
 
     // Wait for X server to be ready

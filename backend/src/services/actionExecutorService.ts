@@ -38,16 +38,33 @@ class ActionExecutorService {
 
       // Validate source-specific actions
       if (request.source === "ubuntu-docker-vnc") {
-        if (request.action === "launch" || request.action === "back") {
+        // Allow "launch" but still block "back" action
+        if (request.action === "back") {
           return {
             status: "error",
             message: `Action '${request.action}' is not supported for Docker VNC source`,
             screenshot: "",
           };
         }
+        
         // Ensure Docker service is initialized
         if (!this._initialized["ubuntu-docker-vnc"]) {
           await this.initializeDockerVNC();
+        }
+
+        // Handle launch action for Docker VNC
+        if (request.action === "launch") {
+          if (!request.url) {
+            return {
+              status: "error",
+              message: "URL is required for launch action",
+              screenshot: "",
+            };
+          }
+          // Use launchFirefoxWithUrl via performAction
+          return await service.performAction(request, {
+            url: request.url,
+          });
         }
       } else if (request.source === "chrome-puppeteer") {
         if (request.action === "doubleClick") {
@@ -83,6 +100,11 @@ class ActionExecutorService {
           : undefined,
         text: request.text,
         key: request.key,
+        direction: request.action === "scroll_up" 
+          ? "up" 
+          : request.action === "scroll_down" 
+            ? "down" 
+            : undefined,
       })) as ActionResponse;
     } catch (error) {
       console.error("Action execution error:", error);
