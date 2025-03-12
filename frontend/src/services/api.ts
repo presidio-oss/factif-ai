@@ -101,20 +101,29 @@ export const sendChatMessage = async (
           hasReceivedMessage = true;
           clearTimeout(connectionTimeout);
 
-          const chunk = decoder.decode(value);
+          // Use decodeWithStream option to handle potential partial UTF-8 characters
+          const chunk = decoder.decode(value, {stream: true});
           const lines = chunk.split("\n").filter((line) => line.trim());
 
           for (const line of lines) {
             if (line.startsWith("data: ")) {
-              const data = JSON.parse(line.slice(6));
-              if (data.isComplete) {
-                onComplete();
-                return;
-              } else if (data.isError) {
-                onError(new Error(data.message));
-                return;
-              } else if (data.message) {
-                onChunk(data.message);
+              try {
+                // Try to parse the JSON data
+                const data = JSON.parse(line.slice(6));
+                if (data.isComplete) {
+                  onComplete();
+                  return;
+                } else if (data.isError) {
+                  onError(new Error(data.message));
+                  return;
+                } else if (data.message) {
+                  onChunk(data.message);
+                }
+              } catch (jsonError) {
+                // Log error but don't break the stream
+                console.warn("JSON parse error in stream chunk:", jsonError);
+                // If this is a syntax error, it might be a partial chunk
+                // Just continue and wait for the next chunk
               }
             }
           }
@@ -266,7 +275,8 @@ export const sendExploreChatMessage = async (
           hasReceivedMessage = true;
           clearTimeout(connectionTimeout);
 
-          const chunk = decoder.decode(value);
+          // Use decodeWithStream option to handle potential partial UTF-8 characters
+          const chunk = decoder.decode(value, {stream: true});
 
           const lines = chunk.split("\n").filter((line) => line.trim());
 
@@ -284,7 +294,9 @@ export const sendExploreChatMessage = async (
                   onChunk(data.message);
                 }
               } catch (e) {
-                console.log(e);
+                // Log the error but continue processing
+                console.warn("JSON parse error in explore stream chunk:", e);
+                // Continue to the next chunk
               }
             }
           }
@@ -323,5 +335,137 @@ export const getCurrentUrl = async (
     return data.url;
   } catch (e) {
     return null;
+  }
+};
+
+// History API methods
+export const getSessionsList = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/history/sessions`);
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching sessions list:', error);
+    throw error;
+  }
+};
+
+export const getSession = async (sessionId: string) => {
+  // First validate the session ID
+  if (!sessionId || typeof sessionId !== 'string') {
+    console.warn("Attempted to fetch session with invalid sessionId");
+    return null;
+  }
+  
+  const trimmedId = sessionId.trim();
+  if (trimmedId === '') {
+    console.warn("Attempted to fetch session with empty sessionId");
+    return null;
+  }
+
+  try {
+    // Don't strip special characters as they may be part of valid IDs
+    const cleanId = trimmedId.replace(/\/$/, "");
+    console.log(`Making API request for session: ${cleanId}`);
+    
+    // Double check that we have a valid ID after cleaning
+    if (!cleanId) {
+      console.warn("Session ID was invalid after cleaning");
+      return null;
+    }
+
+    // Ensure proper URL encoding for IDs with special characters like #
+    const encodedId = encodeURIComponent(cleanId);
+    console.log(`Encoded session ID for request: ${encodedId}`);
+    
+    const requestUrl = `${API_BASE_URL}/history/session/${encodedId}`;
+    console.log(`Full request URL: ${requestUrl}`);
+    
+    const response = await fetch(requestUrl);
+    if (response.status === 404) {
+      // Quietly handle missing sessions without error logging
+      return null;
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to fetch session: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error(`Error fetching session ${sessionId}:`, error);
+    return null; // Always return null on error instead of throwing
+  }
+};
+
+export const saveSession = async (session: any) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/history/session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(session),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to save session: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error saving session:', error);
+    throw error;
+  }
+};
+
+export const deleteSession = async (sessionId: string) => {
+  try {
+    // Make sure sessionId is valid before making the request
+    if (!sessionId || sessionId === "") {
+      console.warn("Attempted to delete session with empty sessionId");
+      return { success: true }; // Return success since there's nothing to delete
+    }
+    
+    // Remove trailing slashes if present
+    const cleanId = sessionId.replace(/\/$/, "");
+    
+    const response = await fetch(`${API_BASE_URL}/history/session/${cleanId}`, {
+      method: 'DELETE',
+    });
+    
+    if (response.status === 404) {
+      // Quietly handle missing sessions without error logging
+      return { success: true };
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Failed to delete session: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error(`Error deleting session ${sessionId}:`, error);
+    throw error;
+  }
+};
+
+export const migrateFromLocalStorage = async (migrationData: any) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/history/migrate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(migrationData),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to migrate data: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error migrating data:', error);
+    throw error;
   }
 };

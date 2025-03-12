@@ -45,3 +45,4 @@ backend/output
 
 # Tools
 .hai/
+/backend/storage/history

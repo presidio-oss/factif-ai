@@ -1,51 +1,49 @@
 import { IExploreGraphData, IExploreSession, IExploreSessionMeta } from "@/types/message.types";
 import { 
-  safeGetItem, 
-  safeSetItem, 
-  safeRemoveItem, 
   removeImageDataFromMessages,
-  pruneMessages
+  pruneMessages,
+  safeGetItem
 } from "./storageUtil";
+import * as api from "../services/api";
 
-const MAX_SESSIONS = 5;
 const SESSIONS_LIST_KEY = 'explore_sessions_list';
 const SESSION_PREFIX = 'explore_session_';
 
 /**
  * Retrieves the list of recent explore sessions metadata
  */
-export const getSessionsList = (): IExploreSessionMeta[] => {
+export const getSessionsList = async (): Promise<IExploreSessionMeta[]> => {
   try {
-    const sessionsList = safeGetItem(SESSIONS_LIST_KEY);
-    return sessionsList ? JSON.parse(sessionsList) : [];
+    const sessionsList = await api.getSessionsList();
+    return sessionsList || [];
   } catch (error) {
-    console.error('Failed to parse sessions list', error);
+    console.error('Failed to fetch sessions list', error);
     return [];
-  }
-};
-
-/**
- * Saves the list of recent explore sessions metadata
- */
-export const saveSessionsList = (sessions: IExploreSessionMeta[]): void => {
-  try {
-    // Ensure we keep only the most recent sessions
-    const limitedSessions = sessions.slice(0, MAX_SESSIONS);
-    safeSetItem(SESSIONS_LIST_KEY, JSON.stringify(limitedSessions));
-  } catch (error) {
-    console.error('Failed to save sessions list', error);
   }
 };
 
 /**
  * Retrieves a specific explore session by ID
  */
-export const getSession = (sessionId: string): IExploreSession | null => {
+export const getSession = async (sessionId: string): Promise<IExploreSession | null> => {
+  // Validate session ID first
+  if (!sessionId || typeof sessionId !== 'string') {
+    console.warn("Attempted to fetch session with invalid sessionId type");
+    return null;
+  }
+  
+  const trimmedId = sessionId.trim();
+  if (trimmedId === '') {
+    console.warn("Attempted to fetch session with empty sessionId");
+    return null;
+  }
+  
   try {
-    const sessionData = safeGetItem(`${SESSION_PREFIX}${sessionId}`);
-    return sessionData ? JSON.parse(sessionData) : null;
+    // Forward to api with validation already done
+    console.log(`Retrieving session: ${trimmedId}`);
+    return await api.getSession(trimmedId);
   } catch (error) {
-    console.error(`Failed to parse session ${sessionId}`, error);
+    // Just return null without logging for most common error case
     return null;
   }
 };
@@ -53,7 +51,7 @@ export const getSession = (sessionId: string): IExploreSession | null => {
 /**
  * Saves an explore session
  */
-export const saveSession = (session: IExploreSession): void => {
+export const saveSession = async (session: IExploreSession): Promise<void> => {
   try {
     // Prepare session data for storage
     const storageSession = { ...session };
@@ -87,24 +85,8 @@ export const saveSession = (session: IExploreSession): void => {
       };
     }
     
-    // Save the full session data
-    safeSetItem(`${SESSION_PREFIX}${session.id}`, JSON.stringify(storageSession));
-    
-    // Update the sessions list
-    const sessionsList = getSessionsList();
-    
-    // Remove this session if it already exists in the list
-    const filteredList = sessionsList.filter(s => s.id !== session.id);
-    
-    // Add the updated session meta at the beginning (most recent)
-    const sessionMeta: IExploreSessionMeta = {
-      id: session.id,
-      title: session.title,
-      timestamp: session.timestamp,
-      preview: session.preview
-    };
-    
-    saveSessionsList([sessionMeta, ...filteredList]);
+    // Save the session to backend
+    await api.saveSession(storageSession);
   } catch (error) {
     console.error('Failed to save session', error);
   }
@@ -113,17 +95,55 @@ export const saveSession = (session: IExploreSession): void => {
 /**
  * Deletes an explore session
  */
-export const deleteSession = (sessionId: string): void => {
+export const deleteSession = async (sessionId: string): Promise<void> => {
   try {
-    // Remove from localStorage
-    safeRemoveItem(`${SESSION_PREFIX}${sessionId}`);
-    
-    // Update the sessions list
-    const sessionsList = getSessionsList();
-    const updatedList = sessionsList.filter(session => session.id !== sessionId);
-    saveSessionsList(updatedList);
+    // Remove from backend storage
+    await api.deleteSession(sessionId);
   } catch (error) {
     console.error(`Failed to delete session ${sessionId}`, error);
+  }
+};
+
+/**
+ * Migrates data from localStorage to backend file storage
+ * This should be called once when the app starts
+ */
+export const migrateFromLocalStorage = async (): Promise<boolean> => {
+  try {
+    const sessionsList = safeGetItem(SESSIONS_LIST_KEY);
+    if (!sessionsList) {
+      console.log('No sessions to migrate from localStorage');
+      return false;
+    }
+    
+    const sessionsListData = JSON.parse(sessionsList);
+    
+    // Gather all session data
+    const sessionData = [];
+    for (const meta of sessionsListData) {
+      const sessionId = meta.id;
+      const sessionItem = safeGetItem(`${SESSION_PREFIX}${sessionId}`);
+      if (sessionItem) {
+        sessionData.push({
+          id: sessionId,
+          data: JSON.parse(sessionItem)
+        });
+      }
+    }
+    
+    // Send to backend for migration
+    const migrationData = {
+      sessionsList: sessionsListData,
+      sessions: sessionData
+    };
+    
+    await api.migrateFromLocalStorage(migrationData);
+    
+    console.log(`Successfully migrated ${sessionData.length} sessions from localStorage`);
+    return true;
+  } catch (error) {
+    console.error('Failed to migrate data from localStorage', error);
+    return false;
   }
 };
 
@@ -185,11 +205,11 @@ export const createSessionTitle = (messages: any[]): string => {
 /**
  * Updates the session for the current chat
  */
-export const updateCurrentSession = (
+export const updateCurrentSession = async (
   chatId: string, 
   messages: any[], 
   graphData: IExploreGraphData
-): void => {
+): Promise<void> => {
   if (!chatId || messages.length === 0) return;
   
   const title = createSessionTitle(messages);
@@ -204,5 +224,5 @@ export const updateCurrentSession = (
     graphData
   };
   
-  saveSession(session);
+  await saveSession(session);
 };

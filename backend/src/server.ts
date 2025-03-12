@@ -11,6 +11,7 @@ import chatRoutes from "./routes/chatRoutes";
 import fileSystemRoutes from "./routes/fileSystemRoutes";
 import actionRoutes from "./routes/actionRoutes";
 import exploreRoutes from "./routes/exploreRoutes";
+import historyRoutes from "./routes/historyRoutes";
 import StreamingSourceService from "./services/StreamingSourceService";
 import { StreamingController } from "./controllers/streamingController";
 import { ActionExecutorService } from "./services/actionExecutorService";
@@ -61,6 +62,7 @@ app.use("/api/", chatRoutes);
 app.use("/api/filesystem", fileSystemRoutes);
 app.use("/api/actions", actionRoutes);
 app.use("/api/explore", exploreRoutes);
+app.use("/api/history", historyRoutes);
 
 // Socket.io connection handling
 io.on("connection", (socket) => {

@@ -33,11 +33,23 @@ const SessionItem: React.FC<{
   session: IExploreSessionMeta;
   onSelect: (id: string) => void;
 }> = ({ session, onSelect }) => {
+  // Validate session ID
+  const isValidId = session && session.id && typeof session.id === 'string' && session.id.trim() !== '';
+  
   return (
     <Card 
-      className="mb-2 cursor-pointer hover:bg-default-100 transition-colors" 
-      onClick={() => onSelect(session.id)}
-      isPressable
+      className={`mb-2 cursor-pointer hover:bg-default-100 transition-colors ${!isValidId ? 'opacity-50' : ''}`}
+      onClick={() => {
+        if (isValidId) {
+          // Ensure it's a string and properly formatted
+          const sessionId = session.id.toString().trim();
+          console.log("Selected session ID:", sessionId);
+          onSelect(sessionId);
+        } else {
+          console.warn("Cannot load session with invalid ID:", session?.id);
+        }
+      }}
+      isPressable={!!isValidId}
     >
       <CardBody className="py-2 px-3">
         <div className="flex justify-between items-start">
@@ -73,7 +85,12 @@ export const RecentChats: React.FC = () => {
   };
 
   const handleSelectSession = (sessionId: string) => {
-    loadSession(sessionId);
+    // Make sure the sessionId is valid before loading
+    if (sessionId && sessionId.trim() !== '') {
+      loadSession(sessionId.trim());
+    } else {
+      console.warn("Attempted to load session with empty ID");
+    }
   };
 
   return (

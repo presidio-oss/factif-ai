@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { getCurrentUrl, executeAction, sendExploreChatMessage } from "../services/api";
+import {
+  getCurrentUrl,
+  executeAction,
+  sendExploreChatMessage,
+} from "../services/api";
 import { ChatMessage, OmniParserResult } from "../types/chat.types";
 import { useAppContext } from "@/contexts/AppContext";
 import { useExploreModeContext } from "@/contexts/ExploreModeContext";
@@ -11,15 +15,13 @@ import {
   IExploreGraphData,
   IExploreQueueItem,
 } from "@/types/message.types";
-import { updateCurrentSession, getSession, getSessionsList } from "@/utils/exploreHistoryManager";
-import { 
-  safeGetItem, 
-  safeSetItem, 
-  safeRemoveItem, 
-  pruneMessages, 
-  removeImageDataFromMessages,
-  cleanupOldChats 
-} from "@/utils/storageUtil";
+import {
+  updateCurrentSession,
+  getSession,
+  getSessionsList,
+  deleteSession,
+} from "@/utils/exploreHistoryManager";
+import { pruneMessages } from "@/utils/storageUtil";
 import { v4 as uuid } from "uuid";
 import { createEdgeOrNode } from "@/utils/graph.util.ts";
 import { StreamingSource } from "@/types/api.types.ts";
@@ -46,14 +48,14 @@ export const useExploreChat = () => {
     setType,
   } = useAppContext();
 
-  const { 
-    setGraphData, 
-    setRecentSessions, 
+  const {
+    setGraphData,
+    setRecentSessions,
     setShowRecentChats,
-    registerLoadSessionFn
+    registerLoadSessionFn,
   } = useExploreModeContext();
 
-  // Initialize with empty array, we'll load from localStorage in useEffect
+  // Initialize with empty array
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [latestOmniParserResult, setLatestOmniParserResult] =
     useState<OmniParserResult | null>(null);
@@ -81,70 +83,72 @@ export const useExploreChat = () => {
     MessageProcessor.initialize(setHasActiveAction);
   }, [setHasActiveAction]);
 
-  // Load messages from localStorage when component mounts or chatId changes
+  // Load messages from backend when component mounts or chatId changes
   useEffect(() => {
     if (currentChatId) {
-      const storedMessagesKey = `explore_chat_${currentChatId}`;
-      const storedMessages = safeGetItem(storedMessagesKey);
-      
-      if (storedMessages) {
+      const loadSessionData = async () => {
         try {
-          const parsedMessages = JSON.parse(storedMessages);
-          // Convert ISO strings back to Date objects
-          const processedMessages = parsedMessages.map((msg: any) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp)
-          }));
-          
-          // Only set messages if we have some and if they're different from current state
-          if (processedMessages.length > 0) {
-            console.log(`Loaded ${processedMessages.length} messages for chat ${currentChatId}`);
-            setMessages(processedMessages);
+          const session = await getSession(currentChatId);
+
+          if (session && session.messages) {
+            // Convert ISO strings back to Date objects
+            const processedMessages = session.messages.map((msg: any) => ({
+              ...msg,
+              timestamp: new Date(msg.timestamp),
+            }));
+
+            // Only set messages if we have some
+            if (processedMessages.length > 0) {
+              console.log(
+                `Loaded ${processedMessages.length} messages for chat ${currentChatId}`,
+              );
+              setMessages(processedMessages);
+            }
+
+            // If this session has graph data, load it
+            if (session.graphData) {
+              exploreGraphData.current = session.graphData;
+              setGraphData(session.graphData);
+            }
           }
         } catch (error) {
-          console.error("Failed to parse stored explore messages:", error);
+          console.error(`Failed to load session ${currentChatId}:`, error);
         }
-      }
-      
-      // Clean up old chats to free space when loading a chat
-      cleanupOldChats(currentChatId);
-    }
-  }, [currentChatId]); // Re-run when chatId changes
+      };
 
-  // Keep messagesRef in sync with messages state and save to localStorage
+      loadSessionData();
+    }
+  }, [currentChatId, setGraphData]);
+
+  // Keep messagesRef in sync with messages state and save to backend
   useEffect(() => {
     messagesRef.current = messages;
-    
+
     // Only save when we have a chat ID and messages
     if (currentChatId && messages.length > 0) {
-      const storedMessagesKey = `explore_chat_${currentChatId}`;
-      
       // Prune messages to control size
       const prunedMessages = pruneMessages(messages);
-      
-      // For localStorage storage, remove large image data
-      const storageMessages = removeImageDataFromMessages(prunedMessages);
-      
-      // Try to save to localStorage
-      const success = safeSetItem(
-        storedMessagesKey, 
-        JSON.stringify(storageMessages.map(msg => ({
-          ...msg,
-          // Convert Date to ISO string for storage
-          timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp
-        })))
-      );
-      
-      if (!success) {
-        console.warn('Failed to save chat messages to localStorage - likely quota exceeded');
-      }
-        
-      // Also save to the session system for automatic persistence
-      // Use the original messages for the session (which might be stored differently)
-      updateCurrentSession(currentChatId, prunedMessages, exploreGraphData.current);
-      
-      // Update the sessions list in ExploreModeContext
-      setRecentSessions(getSessionsList());
+
+      // Save to the backend session system for persistence
+      (async () => {
+        try {
+          // Save the session
+          await updateCurrentSession(
+            currentChatId,
+            prunedMessages,
+            exploreGraphData.current,
+          );
+
+          // Update the sessions list in ExploreModeContext
+          const sessions = await getSessionsList();
+          setRecentSessions(sessions);
+        } catch (error) {
+          console.error(
+            "Failed to save session or update sessions list:",
+            error,
+          );
+        }
+      })();
     }
   }, [messages, currentChatId, setRecentSessions]);
 
@@ -428,13 +432,13 @@ export const useExploreChat = () => {
       const url = await getCurrentUrl(streamingSource);
 
       if (!url) return;
-      
+
       // Always process the elements for the current URL, whether we've seen it before or not
       // This ensures we don't miss any clickable elements on pages we revisit
       if (!exploreQueue.current[url]) {
         exploreQueue.current[url] = [];
       }
-      
+
       // Only add to routeSet if it's a new URL
       if (!routeSet.has(url as string)) {
         routeSet.add(url as string);
@@ -445,14 +449,14 @@ export const useExploreChat = () => {
           url,
           nodeId,
           parent,
-          imageData
+          imageData,
         );
       } else if (exploreQueue.current[url].length === 0) {
         // If we've seen this URL before but its queue is empty, update with new elements
-        const existingNode = exploreGraphData.current.nodes.find(node => 
-          node.data.label === url
+        const existingNode = exploreGraphData.current.nodes.find(
+          (node) => node.data.label === url,
         );
-        
+
         if (existingNode) {
           handleQueueUpdate(
             processedExploreMessage,
@@ -460,7 +464,7 @@ export const useExploreChat = () => {
             url,
             existingNode.id,
             parent,
-            imageData
+            imageData,
           );
           console.log(`Updated elements for existing route: ${url}`);
         }
@@ -476,11 +480,15 @@ export const useExploreChat = () => {
   const getNextToExplore = () => {
     console.log("exploreRoute.current ===>", exploreRoute.current);
     console.log("exploreQueue.current ===>", exploreQueue.current);
-    
+
     // Try each route in order until we find one with items in its queue
     for (let i = 0; i < exploreRoute.current.length; i++) {
       const route = exploreRoute.current[i];
-      if (route && exploreQueue.current[route] && exploreQueue.current[route].length > 0) {
+      if (
+        route &&
+        exploreQueue.current[route] &&
+        exploreQueue.current[route].length > 0
+      ) {
         // Found a route with items to explore
         const nextItem = exploreQueue.current[route].shift();
         if (nextItem) {
@@ -490,19 +498,19 @@ export const useExploreChat = () => {
             nodeId: nextItem.nodeId,
             label: nextItem.text,
           };
-          
+
           // If this isn't the first route, move it to the front for future checks
           if (i > 0) {
             // Move this route to the front of the array for the next iteration
             exploreRoute.current.splice(i, 1);
             exploreRoute.current.unshift(route);
           }
-          
+
           return nextItem;
         }
       }
     }
-    
+
     // No routes with items to explore found
     console.log("No more items to explore in any route");
     return null;
@@ -588,37 +596,43 @@ export const useExploreChat = () => {
     const nextElementToVisit = getNextToExplore();
     console.log("nextElementToVisit ===>", nextElementToVisit);
     isProcessing.current = false;
-    
+
     if (nextElementToVisit) {
       setType("action");
-      
+
       // Use the element's saved screenshot if available, otherwise use the current page screenshot
       // This ensures we document the state of the page when the element was found
-      const elementScreenshot = nextElementToVisit.screenshot || 
+      const elementScreenshot =
+        nextElementToVisit.screenshot ||
         (typeof imageData === "string" ? imageData : imageData?.image);
-      
+
       // Include a direct instruction to take a screenshot after navigation
       const message = `In ${nextElementToVisit.url} \n Visit ${nextElementToVisit.text} on coordinate : ${nextElementToVisit.coordinates} with about this element : ${nextElementToVisit.aboutThisElement}. After clicking on this element you MUST take a screenshot by performing a click action. This screenshot is important for complete documentation of this feature.`;
-      
+
       addMessage({
         text: message,
         timestamp: new Date(),
         isUser: true,
         isHistory: true, // Mark as history so it's included in persistence
       });
-      
+
       // Pass the element's screenshot to ensure it gets saved
-      await handleExploreMessage(message, "action", elementScreenshot || imageData, undefined);
+      await handleExploreMessage(
+        message,
+        "action",
+        elementScreenshot || imageData,
+        undefined,
+      );
     } else {
       // No more elements to explore
       setIsChatStreaming(false);
       setType("explore"); // Change back to explore mode
-      
+
       // Calculate exploration statistics
       const totalNodes = exploreGraphData.current.nodes.length;
       const totalEdges = exploreGraphData.current.edges.length;
       const uniqueRoutes = Object.keys(exploreQueue.current).length;
-      
+
       // Add completion message
       addMessage({
         text: `✅ Exploration complete! I've visited all accessible links and elements.\n\nSummary:\n- ${totalNodes} pages explored\n- ${totalEdges} links followed\n- ${uniqueRoutes} unique routes discovered\n\nYou can now see the complete site map in the graph view. You can also start a new exploration or ask questions about what I found.`,
@@ -727,29 +741,37 @@ export const useExploreChat = () => {
 
     if (sendToBackend) {
       // Check if message contains a URL and is an explore request
-      const containsUrl = /(https?:\/\/[^\s'"]+)/i.test(message) || /\b[a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)\b/i.test(message);
-      const isExploreRequest = message.toLowerCase().includes("explore") || type === "explore";
-      
+      const containsUrl =
+        /(https?:\/\/[^\s'"]+)/i.test(message) ||
+        /\b[a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)\b/i.test(message);
+      const isExploreRequest =
+        message.toLowerCase().includes("explore") || type === "explore";
+
       // If this seems to be an explore request with a URL, ensure browser is launched
       if (isExploreRequest && containsUrl) {
         try {
           // Extract the URL from the message
           let urlMatch = message.match(/(https?:\/\/[^\s'"]+)/i);
-          
+
           // If no http/https URL, try to detect domain names like example.com
           if (!urlMatch) {
-            urlMatch = message.match(/\b([a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)[^\s'"]*)\b/i);
+            urlMatch = message.match(
+              /\b([a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)[^\s'"]*)\b/i,
+            );
             if (urlMatch) {
               // Prepend https:// to the domain
               urlMatch[1] = `https://${urlMatch[1]}`;
             }
           }
           if (urlMatch && urlMatch[1]) {
-            console.log("Auto-launching browser for explore request with URL:", urlMatch[1]);
-            
+            console.log(
+              "Auto-launching browser for explore request with URL:",
+              urlMatch[1],
+            );
+
             const socketService = SocketService.getInstance();
             const socket = socketService.getSocket();
-            
+
             // Check if we have a socket but need to auto-launch the browser
             if (socket) {
               // Launch the browser with the extracted URL
@@ -758,25 +780,31 @@ export const useExploreChat = () => {
                 action: "launch",
                 url: urlMatch[1],
               };
-              
+
               try {
                 setHasActiveAction?.(true);
-                const response = await executeAction(launchAction, streamingSource);
+                const response = await executeAction(
+                  launchAction,
+                  streamingSource,
+                );
                 console.log("Browser auto-launched for explore request");
-                
+
                 // After launching, explicitly set the URL in UIInteractionService
                 if (response.status === "success") {
                   // Set the URL in UIInteractionService to update the URL bar
                   UIInteractionService.getInstance().handleSourceChange(
-                    streamingSource, 
-                    urlMatch[1]
+                    streamingSource,
+                    urlMatch[1],
                   );
                 }
-                
+
                 // Wait briefly to ensure the browser is ready
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise((resolve) => setTimeout(resolve, 1000));
               } catch (error) {
-                console.error("Failed to auto-launch browser for explore:", error);
+                console.error(
+                  "Failed to auto-launch browser for explore:",
+                  error,
+                );
                 // Continue with the message even if auto-launch failed
               } finally {
                 setHasActiveAction?.(false);
@@ -787,23 +815,31 @@ export const useExploreChat = () => {
           console.error("Error in auto-launch logic:", error);
         }
       }
-      
+
       await handleExploreMessage(message, type, imageData, undefined);
       setLatestOmniParserResult(null);
     }
   };
 
-  const clearChat = () => {
+  const clearChat = async () => {
     if (!isChatStreaming) {
       hasPartialMessage.current = false;
       activeMessageId.current = null;
       isProcessing.current = false;
       messagesRef.current = [];
       setMessages([]);
-      
-      // Also clear the localStorage for this chat
+
+      // If we have a chatId, tell the backend to delete its session
       if (currentChatId) {
-        safeRemoveItem(`explore_chat_${currentChatId}`);
+        try {
+          await deleteSession(currentChatId);
+          console.log(`Deleted session for chat ${currentChatId}`);
+        } catch (error) {
+          console.error(
+            `Failed to delete session for chat ${currentChatId}:`,
+            error,
+          );
+        }
       }
     }
   };
@@ -826,49 +862,55 @@ export const useExploreChat = () => {
   };
 
   // Session management functions
-  const loadSession = (sessionId: string) => {
+  const loadSession = async (sessionId: string) => {
     if (isChatStreaming) return;
-    
-    const session = getSession(sessionId);
-    if (!session) {
-      console.error(`Failed to load session ${sessionId}: not found`);
-      return;
-    }
-    
-    // Set current chat ID
-    setCurrentChatId(sessionId);
-    
-    // Load messages
-    if (session.messages && session.messages.length > 0) {
-      const processedMessages = session.messages.map((msg: any) => ({
-        ...msg,
-        timestamp: new Date(msg.timestamp)
-      }));
-      setMessages(processedMessages);
-      messagesRef.current = processedMessages;
-    } else {
-      setMessages([]);
-      messagesRef.current = [];
-    }
-    
-    // Load graph data
-    if (session.graphData) {
-      exploreGraphData.current = session.graphData;
-      setGraphData(session.graphData);
-    } else {
-      exploreGraphData.current = { nodes: [], edges: [] };
-      setGraphData({ nodes: [], edges: [] });
-    }
-    
-    // Reset other state
-    hasPartialMessage.current = false;
-    activeMessageId.current = null;
-    isProcessing.current = false;
-    
-    console.log(`Loaded session ${sessionId} with ${session.messages?.length || 0} messages`);
 
-    // Close recent chats panel
-    setShowRecentChats(false);
+    try {
+      const session = await getSession(sessionId);
+      if (!session) {
+        // Quietly handle missing sessions without error logging
+        return;
+      }
+
+      // Set current chat ID
+      setCurrentChatId(sessionId);
+
+      // Load messages
+      if (session.messages && session.messages.length > 0) {
+        const processedMessages = session.messages.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp),
+        }));
+        setMessages(processedMessages);
+        messagesRef.current = processedMessages;
+      } else {
+        setMessages([]);
+        messagesRef.current = [];
+      }
+
+      // Load graph data
+      if (session.graphData) {
+        exploreGraphData.current = session.graphData;
+        setGraphData(session.graphData);
+      } else {
+        exploreGraphData.current = { nodes: [], edges: [] };
+        setGraphData({ nodes: [], edges: [] });
+      }
+
+      // Reset other state
+      hasPartialMessage.current = false;
+      activeMessageId.current = null;
+      isProcessing.current = false;
+
+      console.log(
+        `Loaded session ${sessionId} with ${session.messages?.length || 0} messages`,
+      );
+
+      // Close recent chats panel
+      setShowRecentChats(false);
+    } catch (error) {
+      console.error(`Error loading session ${sessionId}:`, error);
+    }
   };
 
   // Register the loadSession function with the context
@@ -879,7 +921,7 @@ export const useExploreChat = () => {
       registerLoadSessionFn(loadSession);
       registeredRef.current = true;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array to ensure this only runs once
 
   return {

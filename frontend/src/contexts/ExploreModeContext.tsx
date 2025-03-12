@@ -43,10 +43,19 @@ export const ExploreModeProvider: React.FC<{ children: React.ReactNode }> = ({
   const [recentSessions, setRecentSessions] = useState<IExploreSessionMeta[]>([]);
   const [showRecentChats, setShowRecentChats] = useState(false);
 
-  // Load recent sessions from localStorage on mount
+  // Load recent sessions from backend on mount
   useEffect(() => {
-    const sessions = getSessionsList();
-    setRecentSessions(sessions);
+    const loadSessions = async () => {
+      try {
+        const sessions = await getSessionsList();
+        setRecentSessions(sessions);
+      } catch (error) {
+        console.error('Failed to load recent sessions:', error);
+        setRecentSessions([]);
+      }
+    };
+    
+    loadSessions();
   }, []);
   
   // State to store the loadSession function from useExploreChat
@@ -59,7 +68,15 @@ export const ExploreModeProvider: React.FC<{ children: React.ReactNode }> = ({
   
   // Function that will be provided to consumers of the context
   const loadSession = (sessionId: string) => {
-    loadSessionFn(sessionId);
+    // Validate session ID before calling implementation
+    if (!sessionId || typeof sessionId !== 'string' || sessionId.trim() === '') {
+      console.warn('Attempted to load a session with an invalid ID');
+      return;
+    }
+    
+    // Clean the session ID before calling implementation
+    const cleanId = sessionId.trim().replace(/\/$/, "");
+    loadSessionFn(cleanId);
   };
   
   // Function to register the real implementation from useExploreChat
