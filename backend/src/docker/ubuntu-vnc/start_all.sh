@@ -9,6 +9,11 @@ export XDG_RUNTIME_DIR=/tmp/runtime-$USERNAME
 mkdir -p $XDG_RUNTIME_DIR
 chmod 700 $XDG_RUNTIME_DIR
 
+# Create log directories
+mkdir -p /tmp/x11vnc_logs /tmp/novnc_logs /tmp/tint2_logs /tmp/pcmanfm_logs
+
+echo "Starting VNC services..."
+
 # Start Xvfb
 ./xvfb_startup.sh
 
@@ -17,9 +22,10 @@ chmod 700 $XDG_RUNTIME_DIR
 sleep 2
 ./tint2_startup.sh
 
-# Start PCManFM for desktop icons
-pcmanfm --desktop &
-sleep 1
+# Start PCManFM for desktop icons using our custom script
+./pcmanfm_startup.sh
 
 # Start VNC server
 ./x11vnc_startup.sh
+
+echo "All VNC services started"

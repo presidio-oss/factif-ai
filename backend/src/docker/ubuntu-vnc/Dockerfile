@@ -127,6 +127,7 @@ COPY x11vnc_startup.sh /app/
 COPY novnc_startup.sh /app/
 COPY mutter_startup.sh /app/
 COPY tint2_startup.sh /app/
+COPY pcmanfm_startup.sh /app/
 
 # Set proper ownership
 RUN chown -R $USERNAME:$USERNAME $HOME && \

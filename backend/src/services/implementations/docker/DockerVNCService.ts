@@ -29,6 +29,7 @@ export class DockerVNCService extends BaseStreamingService {
 
   async initialize(url: string): Promise<ActionResponse> {
     this.emitConsoleLog("info", "Initializing Ubuntu Docker VNC...");
+    let shouldLaunchBrowser = url && url.trim().length > 0;
 
     try {
       const containerStatus = await DockerCommands.checkContainerStatus(
@@ -52,7 +53,8 @@ export class DockerVNCService extends BaseStreamingService {
         }
 
         await this.waitForServices();
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        this.emitConsoleLog("info", "Allowing extra time for VNC services to stabilize...");
+        await new Promise((resolve) => setTimeout(resolve, 5000));
 
         this.isConnected = true;
         this.isInitialized = true;
@@ -61,9 +63,17 @@ export class DockerVNCService extends BaseStreamingService {
           "info",
           "Connected to existing Ubuntu Docker VNC container"
         );
+
+        // Launch browser if URL is provided
+        if (shouldLaunchBrowser && this.containerId) {
+          await this.launchFirefoxWithUrl(url);
+        }
+
         return {
           status: "success",
-          message: "Connected to existing Ubuntu Docker VNC container",
+          message: shouldLaunchBrowser 
+            ? `Connected to existing Ubuntu Docker VNC container and launched Firefox with URL: ${url}`
+            : "Connected to existing Ubuntu Docker VNC container",
         };
       }
 
@@ -73,7 +83,8 @@ export class DockerVNCService extends BaseStreamingService {
       this.containerId = containerId;
 
       await this.waitForServices();
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      this.emitConsoleLog("info", "Allowing extra time for VNC services to stabilize...");
+      await new Promise((resolve) => setTimeout(resolve, 5000));
 
       await this.setupLogStreams();
 
@@ -81,9 +92,16 @@ export class DockerVNCService extends BaseStreamingService {
       this.isInitialized = true;
       this.emitConsoleLog("info", "Ubuntu Docker VNC initialization complete");
 
+      // Launch browser if URL is provided
+      if (shouldLaunchBrowser && this.containerId) {
+        await this.launchFirefoxWithUrl(url);
+      }
+
       return {
         status: "success",
-        message: "Ubuntu Docker VNC initialization complete",
+        message: shouldLaunchBrowser 
+          ? `Ubuntu Docker VNC initialization complete and Firefox launched with URL: ${url}`
+          : "Ubuntu Docker VNC initialization complete",
       };
     } catch (error: any) {
       this.emitConsoleLog(
@@ -95,12 +113,93 @@ export class DockerVNCService extends BaseStreamingService {
     }
   }
 
+  // New method to launch Firefox with a URL
+  async launchFirefoxWithUrl(url: string): Promise<void> {
+    if (!this.containerId) {
+      throw new Error("Container is not initialized");
+    }
+
+    try {
+      this.emitConsoleLog("info", `Launching Firefox with URL: ${url}`);
+      
+      // Check if Firefox is already running
+      let firefoxRunning = false;
+      try {
+        const result = await DockerCommands.executeCommand({
+          command: ["exec", this.containerId, "pgrep", "-f", "firefox-esr"],
+        });
+        firefoxRunning = result.trim().length > 0;
+      } catch (e) {
+        // If pgrep fails, Firefox is likely not running
+        firefoxRunning = false;
+      }
+      
+      this.emitConsoleLog("info", `Firefox is ${firefoxRunning ? 'already running' : 'not running'}`);
+
+      if (firefoxRunning) {
+        // If Firefox is already running, just navigate to the URL using xdotool
+        this.emitConsoleLog("info", "Navigating existing Firefox window to URL: " + url);
+        try {
+          // Activate Firefox window
+          await DockerCommands.executeCommand({
+            command: ["exec", this.containerId, "xdotool", "search", "--onlyvisible", "--class", "firefox", "windowactivate"],
+          });
+          
+          // Navigate to the URL by focusing address bar, typing new URL, and hitting enter
+          await DockerCommands.executeCommand({
+            command: ["exec", this.containerId, "xdotool", "key", "ctrl+l"],
+          });
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          await DockerCommands.executeCommand({
+            command: ["exec", this.containerId, "xdotool", "type", url],
+          });
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          await DockerCommands.executeCommand({
+            command: ["exec", this.containerId, "xdotool", "key", "Return"],
+          });
+          
+          this.emitConsoleLog("info", `Navigated existing Firefox to URL: ${url}`);
+        } catch (error: any) {
+          this.emitConsoleLog("warn", "Error navigating Firefox: " + error.message);
+          
+          // As a fallback, try launching a new window
+          this.emitConsoleLog("info", "Attempting to open a new Firefox window instead");
+          await DockerCommands.executeCommand({
+            command: ["exec", this.containerId, "bash", "-c", `firefox-esr --new-window "${url}"`],
+            successMessage: `Launched Firefox with URL: ${url}`,
+            errorMessage: `Failed to launch Firefox with URL: ${url}`,
+          });
+        }
+      } else {
+        // Launch Firefox with the specified URL if it's not running
+        await DockerCommands.executeCommand({
+          command: ["exec", this.containerId, "bash", "-c", `firefox-esr --new-window "${url}"`],
+          successMessage: `Launched Firefox with URL: ${url}`,
+          errorMessage: `Failed to launch Firefox with URL: ${url}`,
+        });
+      }
+
+      // Allow time for Firefox to load
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      
+      this.emitConsoleLog("info", "Firefox launched successfully");
+    } catch (error: any) {
+      this.emitConsoleLog(
+        "error",
+        `Failed to launch Firefox: ${error.message || "Unknown error"}`
+      );
+      throw error;
+    }
+  }
+
   private async ensureImageExists(): Promise<void> {
     try {
       await DockerCommands.executeCommand({
         command: ["images", "-q", this.config.imageName],
       });
-    } catch (error) {
+    } catch (error: any) {
       this.emitConsoleLog("error", "Docker image not available.");
       throw error;
     }
@@ -110,17 +209,35 @@ export class DockerVNCService extends BaseStreamingService {
     if (!this.containerId) throw new Error("No container ID available");
 
     let attempts = 0;
-    const maxAttempts = 30;
+    const maxAttempts = 60; // Increased timeout from 30 to 60 seconds
+    
+    this.emitConsoleLog("info", "Waiting for VNC services to start...");
 
     while (attempts < maxAttempts) {
-      if (await DockerCommands.checkService(this.containerId)) {
+      const serviceStatus = await DockerCommands.checkServiceDetailed(this.containerId);
+      
+      if (serviceStatus.vncReady && serviceStatus.noVncReady) {
+        this.emitConsoleLog("info", "All VNC services started successfully");
         return;
       }
+      
+      // Log which specific service we're waiting for
+      if (attempts % 5 === 0) {
+        if (!serviceStatus.vncReady && !serviceStatus.noVncReady) {
+          this.emitConsoleLog("info", `Waiting for VNC and noVNC services... [${attempts+1}/${maxAttempts}]`);
+        } else if (!serviceStatus.vncReady) {
+          this.emitConsoleLog("info", `Waiting for VNC service (port 5900)... [${attempts+1}/${maxAttempts}]`);
+        } else if (!serviceStatus.noVncReady) {
+          this.emitConsoleLog("info", `Waiting for noVNC service (port 6080)... [${attempts+1}/${maxAttempts}]`);
+        }
+      }
+      
       await new Promise((resolve) => setTimeout(resolve, 1000));
       attempts++;
     }
 
-    throw new Error("Timeout waiting for services to start");
+    // Enhanced error message with more details
+    throw new Error("Timeout waiting for services to start. Please check Docker logs for more information.");
   }
 
   private async setupLogStreams(): Promise<void> {
@@ -144,9 +261,9 @@ export class DockerVNCService extends BaseStreamingService {
           }
         });
       })
-      .catch((error) => {
-        if (!error.message.includes("No such file")) {
-          this.emitConsoleLog("error", `[${service}] ${error.message}`);
+      .catch((error: any) => {
+        if (!error.message?.includes("No such file")) {
+          this.emitConsoleLog("error", `[${service}] ${error.message || "Unknown error"}`);
         }
       });
   }
@@ -194,8 +311,58 @@ export class DockerVNCService extends BaseStreamingService {
       };
     }
 
+    // Handle launch action separately
+    if (action.action === "launch" && params?.url) {
+      try {
+        await this.launchFirefoxWithUrl(params.url);
+        
+        // Take screenshot after launching browser
+        const screenshot = await this.takeScreenshot();
+        
+        // After Firefox is launched with URL, we need to trigger exploration automatically
+        this.emitConsoleLog("info", "Triggering automatic exploration via multiple methods");
+        
+        // Emit socket events that the AutoExploreHandler component will listen for
+        this.io.sockets.emit("firefox-launched", {
+          url: params.url,
+          screenshot: screenshot || "",
+          source: "ubuntu-docker-vnc"
+        });
+        
+        this.io.sockets.emit("auto-explore", {
+          message: `Explore ${params.url}`,
+          url: params.url,
+          screenshot: screenshot || "",
+          source: "ubuntu-docker-vnc"
+        });
+        
+        // Try to run the autotype script directly
+        try {
+          const { execSync } = require('child_process');
+          const autotypePath = path.resolve(__dirname, "../../../docker/ubuntu-vnc/autotype.sh");
+          
+          this.emitConsoleLog("info", `Running autotype script for ${params.url}`);
+          execSync(`bash ${autotypePath} "${params.url}" &`);
+        } catch (scriptError: any) {
+          this.emitConsoleLog("warn", `Failed to run autotype script: ${scriptError.message || "Unknown error"}`);
+        }
+        
+        return {
+          status: "success",
+          message: `Launched Firefox with URL: ${params.url} and triggered exploration`,
+          screenshot: screenshot || "",
+        };
+      } catch (error: any) {
+        return {
+          status: "error",
+          message: error.message || "Failed to launch Firefox",
+          screenshot: "",
+        };
+      }
+    }
+
     try {
-      this.emitConsoleLog("info", `Performing VNC action: ${action}`);
+      this.emitConsoleLog("info", `Performing VNC action: ${action.action}`);
       return await DockerActions.performAction(
         this.containerId,
         action,
@@ -218,7 +385,6 @@ export class DockerVNCService extends BaseStreamingService {
       return {
         status: "error",
         message: "VNC not initialized",
-
         screenshot: "",
       };
     }

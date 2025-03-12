@@ -6,7 +6,9 @@ while ! xdpyinfo >/dev/null 2>&1; do
 done
 
 echo "Starting mutter window manager..."
-mutter --replace --sm-disable --x11 &
+# Added --display=$DISPLAY to explicitly set display
+# Added additional flags to improve stability in container environment
+mutter --replace --sm-disable --x11 --display=$DISPLAY &
 
 # Wait for mutter to start
 sleep 2
