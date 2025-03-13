@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { ChatInput } from "./ChatInput";
 import { ChatMessages } from "./ChatMessages";
 import { useAppContext } from "../../contexts/AppContext";
@@ -7,6 +8,7 @@ import { Button } from "@nextui-org/react";
 import { Suggestions } from "./components/Suggestions";
 
 export const Chat = () => {
+  const navigate = useNavigate();
   const { currentChatId, setCurrentChatId, isChatStreaming } = useAppContext();
   const { messages, sendMessage, clearChat, messagesEndRef, stopStreaming } =
     useChat();
@@ -40,30 +42,56 @@ export const Chat = () => {
               </span>
             )}
           </div>
-          <Button
-            onPress={handleClearChat}
-            isDisabled={isChatStreaming}
-            color="default"
-            variant="bordered"
-            size="sm"
-            isIconOnly
-            className="min-w-unit-8 w-8 h-8"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          <div className="flex gap-2 items-center">
+            <Button
+              onPress={handleClearChat}
+              isDisabled={isChatStreaming}
+              color="default"
+              variant="bordered"
+              size="sm"
+              isIconOnly
+              className="min-w-unit-8 w-8 h-8"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-          </Button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+            </Button>
+            <Button
+              size="sm"
+              color="primary"
+              variant="flat"
+              isIconOnly
+              isDisabled={isChatStreaming}
+              onPress={() => navigate("/explore-mode")}
+              className="h-8 w-8 min-w-0"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </Button>
+          </div>
         </div>
       </div>
       <div className="flex-1 relative overflow-hidde bg-background">

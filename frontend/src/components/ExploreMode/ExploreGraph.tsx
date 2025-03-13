@@ -13,6 +13,7 @@ import {
   MarkerType,
   Panel,
 } from "@xyflow/react";
+import { Button } from "@nextui-org/react";
 import { IExploredNode } from "@/types/message.types.ts";
 import { useExploreModeContext } from "@/contexts/ExploreModeContext.tsx";
 import "@xyflow/react/dist/style.css";
@@ -164,6 +165,38 @@ const GroupNode = ({
   );
 };
 
+// FloatingGraphToggle component for toggling between graph and preview views
+const FloatingGraphToggle: React.FC = () => {
+  const { showGraph, setShowGraph } = useExploreModeContext();
+
+  // In ExploreGraph, we're already in graph view, so show display/monitor icon to go back to preview
+  return (
+    <Button
+      size="sm"
+      color="primary"
+      variant="flat"
+      isIconOnly
+      onPress={() => setShowGraph(!showGraph)}
+      className="h-8 w-8 min-w-0 m-1.5"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-4 w-4"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+        />
+      </svg>
+    </Button>
+  );
+};
+
 // Define node types outside the component to prevent re-creation on each render
 const nodeTypes = {
   pageNode: PageNode,
@@ -177,10 +210,10 @@ export function ExploreGraph() {
   >({});
   const [isClassifying, setIsClassifying] = useState<boolean>(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  
+
   // State to store category containers that persists during updates
   const [categoryContainers, setCategoryContainers] = useState<Node[]>([]);
-  
+
   // Use ref to track last update and prevent flicker during rapid updates
   const updateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -401,16 +434,16 @@ export function ExploreGraph() {
 
     // Map of current node IDs to their categories and descriptions
     const categoryMap = new Map();
-    nodes.forEach(node => {
+    nodes.forEach((node) => {
       if (node.id && node.data?.category) {
         categoryMap.set(node.id, {
           category: node.data.category,
-          categoryDescription: node.data.categoryDescription
+          categoryDescription: node.data.categoryDescription,
         });
       }
     });
-    
-    const newNodes = convertToNodes(graphData.nodes).map(node => {
+
+    const newNodes = convertToNodes(graphData.nodes).map((node) => {
       if (node.id && categoryMap.has(node.id)) {
         // Preserve category info for existing nodes
         const categoryInfo = categoryMap.get(node.id);
@@ -419,13 +452,13 @@ export function ExploreGraph() {
           data: {
             ...node.data,
             category: categoryInfo.category,
-            categoryDescription: categoryInfo.categoryDescription
-          }
+            categoryDescription: categoryInfo.categoryDescription,
+          },
         };
       }
       return node;
     });
-    
+
     setNodes(newNodes);
     setEdges(
       graphData.edges
@@ -618,7 +651,7 @@ export function ExploreGraph() {
   // This debounced implementation prevents flickering during rapid updates
   useEffect(() => {
     if (!validNodes.length) return;
-    
+
     // Clear any pending updates
     if (updateTimerRef.current) {
       clearTimeout(updateTimerRef.current);
@@ -651,7 +684,7 @@ export function ExploreGraph() {
         .map(([category, nodesInCategory]) => {
           if (nodesInCategory.length === 0) return null;
 
-          // Calculate bounding box 
+          // Calculate bounding box
           const allXCoordinates = nodesInCategory.map((n) => n.position.x);
           const allYCoordinates = nodesInCategory.map((n) => n.position.y);
 
@@ -666,7 +699,7 @@ export function ExploreGraph() {
 
           const width = maxX - minX;
           const height = maxY - minY;
-          
+
           // Create container node
           return {
             id: `category-${category}`,
@@ -678,7 +711,7 @@ export function ExploreGraph() {
               zIndex: -1,
               borderRadius: "9px",
               cursor: "grab",
-              padding: '0px'
+              padding: "0px",
             },
             data: {
               label: category.toUpperCase(),
@@ -696,11 +729,11 @@ export function ExploreGraph() {
           };
         })
         .filter(Boolean) as Node[];
-      
+
       // Update category containers with new positions
       setCategoryContainers(newCategoryNodes);
     }, 200); // 200ms debounce
-    
+
     return () => {
       if (updateTimerRef.current) {
         clearTimeout(updateTimerRef.current);
@@ -713,9 +746,9 @@ export function ExploreGraph() {
     // Keep the edges curved and offset to prevent overlap
     setEdges((edges) =>
       edges.map((edge) => {
-        const isConnectedToSelectedNode = 
+        const isConnectedToSelectedNode =
           selectedNode === edge.source || selectedNode === edge.target;
-        
+
         return {
           ...edge,
           type: "bezier",
@@ -723,17 +756,17 @@ export function ExploreGraph() {
           markerEnd: {
             type: MarkerType.ArrowClosed,
           },
-          style: isConnectedToSelectedNode 
-            ? { 
+          style: isConnectedToSelectedNode
+            ? {
                 stroke: "#00BFFF", // Bright cyan color for highlighting
                 strokeWidth: 3,
                 filter: "drop-shadow(0 0 5px #00BFFF)",
-                transition: "all 0.3s ease"
-              } 
-            : { 
-                stroke: "#555", 
+                transition: "all 0.3s ease",
+              }
+            : {
+                stroke: "#555",
                 strokeWidth: 2,
-                transition: "all 0.3s ease"
+                transition: "all 0.3s ease",
               },
           pathOptions: { offset: 15 },
         };
@@ -751,8 +784,8 @@ export function ExploreGraph() {
         onConnect={onConnect}
         onNodeClick={(_, node) => {
           // Only set selectedNode for pageNode types, not containers
-          if (node.type === 'pageNode') {
-            setSelectedNode(prev => prev === node.id ? null : node.id);
+          if (node.type === "pageNode") {
+            setSelectedNode((prev) => (prev === node.id ? null : node.id));
           }
         }}
         fitView
@@ -769,6 +802,10 @@ export function ExploreGraph() {
         nodesFocusable={true}
         edgesFocusable={true}
       >
+        <Panel position="top-right" className="mr-4 mt-4">
+          <FloatingGraphToggle />
+        </Panel>
+
         <Panel
           position="top-left"
           className="bg-background/95 p-3 rounded shadow-lg border border-border/50"

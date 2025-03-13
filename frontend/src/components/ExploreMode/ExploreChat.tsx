@@ -1,21 +1,30 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ChatInput } from "../Chat/ChatInput";
 import { ChatMessages } from "../Chat/ChatMessages";
 import { useAppContext } from "@/contexts/AppContext";
 import { useExploreModeContext } from "@/contexts/ExploreModeContext";
 import { useExploreChat } from "@/hooks/useExploreChat";
-import { Button, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@nextui-org/react";
+import {
+  Button,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+} from "@nextui-org/react";
 import { Suggestion, Suggestions } from "../Chat/components/Suggestions";
 import RecentChats from "./RecentChats";
 import { emergencyStorageCleanup } from "@/utils/storageCleanup";
 
 export const ExploreChat = () => {
+  const navigate = useNavigate();
   const { currentChatId, setCurrentChatId, isChatStreaming, type } =
     useAppContext();
   const { showRecentChats, setShowRecentChats } = useExploreModeContext();
   const { messages, sendMessage, clearChat, messagesEndRef, stopStreaming } =
     useExploreChat();
-  
+
   // State for storage warning modal
   const [isStorageWarningOpen, setIsStorageWarningOpen] = useState(false);
   const [cleanupItemsCount, setCleanupItemsCount] = useState(0);
@@ -24,32 +33,32 @@ export const ExploreChat = () => {
     if (!currentChatId) {
       setCurrentChatId(`#${Date.now()}`);
     }
-    
+
     // Set up error listener for quota exceeded errors
     const handleStorageError = (event: ErrorEvent) => {
       // Check if the error is related to localStorage quota
       if (
-        event.message.includes('QuotaExceededError') ||
-        event.message.includes('exceeded the quota') ||
-        event.message.includes('QUOTA_EXCEEDED_ERR')
+        event.message.includes("QuotaExceededError") ||
+        event.message.includes("exceeded the quota") ||
+        event.message.includes("QUOTA_EXCEEDED_ERR")
       ) {
-        console.warn('Storage quota exceeded, performing emergency cleanup');
-        
+        console.warn("Storage quota exceeded, performing emergency cleanup");
+
         // Run the emergency cleanup
         const count = emergencyStorageCleanup();
         setCleanupItemsCount(count);
-        
+
         // Show the warning modal
         setIsStorageWarningOpen(true);
       }
     };
-    
+
     // Add event listener
-    window.addEventListener('error', handleStorageError);
-    
+    window.addEventListener("error", handleStorageError);
+
     return () => {
       // Remove event listener on cleanup
-      window.removeEventListener('error', handleStorageError);
+      window.removeEventListener("error", handleStorageError);
     };
   }, [currentChatId, setCurrentChatId]);
 
@@ -90,18 +99,19 @@ export const ExploreChat = () => {
               </span>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <Button
               onPress={toggleRecentChats}
               isDisabled={isChatStreaming}
               color="default"
-              variant="flat"
+              variant="bordered"
               size="sm"
-              className="min-w-unit-16"
+              isIconOnly
+              className="min-w-unit-8 w-8 h-8"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 mr-1"
+                className="h-4 w-4"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -110,34 +120,9 @@ export const ExploreChat = () => {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              History
-            </Button>
-            <Button
-              onPress={handleManualCleanup}
-              isDisabled={isChatStreaming}
-              color="warning"
-              variant="flat"
-              size="sm"
-              className="min-w-unit-16 hidden"
-            >
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                className="h-4 w-4 mr-1" 
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
-                />
-              </svg>
-              Clean Storage
             </Button>
             <Button
               onPress={handleClearChat}
@@ -163,28 +148,82 @@ export const ExploreChat = () => {
                 />
               </svg>
             </Button>
+
+            <Button
+              size="sm"
+              color="primary"
+              variant="flat"
+              isIconOnly
+              isDisabled={isChatStreaming}
+              onPress={() => navigate("/")}
+              className="h-8 w-8 min-w-0"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+                />
+              </svg>
+            </Button>
+            <Button
+              onPress={handleManualCleanup}
+              isDisabled={isChatStreaming}
+              color="warning"
+              variant="flat"
+              size="sm"
+              className="min-w-unit-16 hidden"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4 mr-1"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+              Clean Storage
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Storage Warning Modal */}
-      <Modal isOpen={isStorageWarningOpen} onClose={() => setIsStorageWarningOpen(false)}>
+      <Modal
+        isOpen={isStorageWarningOpen}
+        onClose={() => setIsStorageWarningOpen(false)}
+      >
         <ModalContent>
-          <ModalHeader className="flex flex-col gap-1">Storage Quota Warning</ModalHeader>
+          <ModalHeader className="flex flex-col gap-1">
+            Storage Quota Warning
+          </ModalHeader>
           <ModalBody>
             <p>
-              Your browser storage quota was exceeded. This usually happens when exploring many pages
-              with large images and screenshots.
+              Your browser storage quota was exceeded. This usually happens when
+              exploring many pages with large images and screenshots.
             </p>
             <p className="mt-2">
-              {cleanupItemsCount > 0 
-                ? `We've automatically cleaned up ${cleanupItemsCount} items from your storage.` 
+              {cleanupItemsCount > 0
+                ? `We've automatically cleaned up ${cleanupItemsCount} items from your storage.`
                 : "We've attempted to clean up your storage."}
             </p>
           </ModalBody>
           <ModalFooter>
-            <Button 
-              color="primary" 
+            <Button
+              color="primary"
               onPress={() => setIsStorageWarningOpen(false)}
             >
               Got it
@@ -192,13 +231,9 @@ export const ExploreChat = () => {
           </ModalFooter>
         </ModalContent>
       </Modal>
-      
-      {/* Recent Chats Panel */}
-      {showRecentChats && (
-        <div className="absolute z-30 top-[72px] left-0 right-0 p-3">
-          <RecentChats />
-        </div>
-      )}
+
+      {/* Recent Chats Modal */}
+      {showRecentChats && <RecentChats clearChat={clearChat} />}
       <div className="flex-1 relative overflow-hidde bg-background">
         <div className="absolute inset-0">
           <div className="h-full overflow-y-auto">
@@ -243,6 +278,7 @@ export const ExploreModeSuggestions: Suggestion[] = [
     type: "explore",
     title: "Explore Ecommerce Site",
     description: "Explore all the features and links on saucedemo.com",
-    prompt: "Explore https://www.saucedemo.com/ and document the features and links",
+    prompt:
+      "Explore https://www.saucedemo.com/ and document the features and links",
   },
 ];
