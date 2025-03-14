@@ -1,4 +1,5 @@
 import darkLogo from "../../assets/hai-build-dark-logo.png";
+import factifaiLogo from "../../assets/factifai-logo.svg";
 import { Link, useLocation } from "react-router-dom";
 import { useExploreModeContext } from "@/contexts/ExploreModeContext.tsx";
 import { useEffect } from "react";
@@ -25,9 +26,11 @@ export const Header = () => {
       <div className="px-6 flex items-center">
         <div className="flex items-center gap-3">
           <Link to="/">
-            <h2 className="text-xl md:text-2xl text-white font-normal">
-              FACTIFAI
-            </h2>
+            <img
+              src={factifaiLogo}
+              alt="FACTIFAI Logo"
+              className="h-8 w-auto"
+            />
           </Link>
         </div>
         <div className="flex-1 flex justify-end items-center">
