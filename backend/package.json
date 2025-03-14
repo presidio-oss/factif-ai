@@ -4,6 +4,7 @@
   "description": "TypeScript Express Backend",
   "main": "dist/server.js",
   "scripts": {
+    "postinstall": "playwright install chromium",
     "start": "node dist/server.js",
     "dev": "nodemon --watch src --ext ts --exec \"ts-node src/server.ts\"",
     "build": "tsc",
