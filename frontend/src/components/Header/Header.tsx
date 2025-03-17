@@ -1,7 +1,6 @@
 import darkLogo from "../../assets/hai-build-dark-logo.png";
 import factifaiLogo from "../../assets/factifai-logo.svg";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@nextui-org/react";
 import { useExploreModeContext } from "@/contexts/ExploreModeContext.tsx";
 import { useAppContext } from "@/contexts/AppContext.tsx";
 import { useEffect } from "react";
@@ -52,34 +51,6 @@ export const Header = () => {
           </Link>
         </div>
         <div className="flex-1 flex justify-end items-center gap-4">
-          {/* Mode switch button */}
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              color={location.pathname !== "/explore-mode" ? "primary" : "default"}
-              variant="flat"
-              isDisabled={isChatStreaming || hasActiveAction || location.pathname !== "/explore-mode"}
-              onClick={() => handleModeSwitch("regression")}
-              className="text-xs"
-            >
-              Normal
-            </Button>
-            <Button
-              size="sm"
-              color={location.pathname === "/explore-mode" ? "primary" : "default"}
-              variant="flat"
-              isDisabled={isChatStreaming || hasActiveAction || location.pathname === "/explore-mode"}
-              onClick={() => handleModeSwitch("explore")}
-              className="text-xs"
-            >
-              Explore
-            </Button>
-            {(isChatStreaming || hasActiveAction) && (
-              <span className="text-xs text-warning ml-1">
-                Wait...
-              </span>
-            )}
-          </div>
           <img
             src={darkLogo}
             alt="HAI Build Logo"

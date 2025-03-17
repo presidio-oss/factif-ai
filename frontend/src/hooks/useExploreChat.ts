@@ -308,7 +308,14 @@ export const useExploreChat = () => {
       type: "pageNode",
     });
     setGraphData(exploreGraphData.current);
-    localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
+    
+    // Safely store graph data with error handling
+    try {
+      localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
+    } catch (error) {
+      console.error("Failed to save graph data to localStorage:", error);
+      // App can continue functioning even if storage fails
+    }
   };
 
   const createEdge = (
@@ -331,7 +338,14 @@ export const useExploreChat = () => {
       }
     });
     setGraphData(exploreGraphData.current);
-    localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
+    
+    // Safely store graph data with error handling
+    try {
+      localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
+    } catch (error) {
+      console.error("Failed to save edge data to localStorage:", error);
+      // App can continue functioning even if storage fails
+    }
   };
 
   // Add a periodic state persistence function to ensure graph data isn't lost
@@ -344,7 +358,13 @@ export const useExploreChat = () => {
           console.log("Periodic graph data persistence:", 
                      exploreGraphData.current.nodes.length, "nodes");
           setGraphData(exploreGraphData.current);
-          localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
+          
+          try {
+            localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
+          } catch (error) {
+            console.error("Failed to save graph data during periodic persistence:", error);
+            // App can continue functioning without this persistence
+          }
         }
       }, 30000); // Every 30 seconds
       
@@ -491,7 +511,7 @@ export const useExploreChat = () => {
           url,
           id: elementId,
           nodeId,
-          // Store the screenshot with each element for documentation
+          // Store the screenshot with each element in memory, but not in localStorage
           screenshot: processedImageData,
           parent: {
             url: (parent?.url as string) || url,
@@ -502,10 +522,35 @@ export const useExploreChat = () => {
         exploreQueue.current[url].push(exploredOutput);
       }
     }
-    localStorage.setItem(
-      "started_explore",
-      JSON.stringify(exploreQueue.current),
-    );
+    
+    try {
+      // Create a storage-optimized version of the queue (without screenshots)
+      const storageOptimizedQueue: Record<string, Omit<IExploreQueueItem, 'screenshot'>[]> = {};
+      
+      // Process each URL in the queue
+      Object.keys(exploreQueue.current).forEach(queueUrl => {
+        // Limit to max 50 items per URL to prevent excessive storage
+        const limitedItems = exploreQueue.current[queueUrl].slice(0, 50);
+        
+        // Remove screenshots and full source text to reduce size
+        storageOptimizedQueue[queueUrl] = limitedItems.map(item => {
+          const { screenshot, source, ...rest } = item;
+          return {
+            ...rest,
+            // Keep a shortened version of the source if needed
+            source: source?.substring(0, 100) + (source && source.length > 100 ? '...' : '')
+          };
+        });
+      });
+      
+      localStorage.setItem(
+        "started_explore",
+        JSON.stringify(storageOptimizedQueue),
+      );
+    } catch (error) {
+      console.error("Failed to save explore queue to localStorage:", error);
+      // Continue without stopping execution - the app can still function without persistent storage
+    }
   };
 
   const cleanCompletedQueue = (
@@ -937,10 +982,14 @@ export const useExploreChat = () => {
       setGraphData({ nodes: [], edges: [] });
       
       // Clear localStorage MAP data to ensure a fresh start
-      localStorage.removeItem("MAP");
-      localStorage.removeItem("started_explore");
-      
-      console.log("Graph data reset for new chat");
+      try {
+        localStorage.removeItem("MAP");
+        localStorage.removeItem("started_explore");
+        console.log("Graph data reset for new chat");
+      } catch (error) {
+        // This shouldn't happen with removeItem but added for completeness
+        console.error("Error clearing localStorage:", error);
+      }
 
       // If we have a chatId, tell the backend to delete its session
       if (currentChatId) {

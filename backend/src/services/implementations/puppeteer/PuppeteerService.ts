@@ -258,10 +258,12 @@ export class PuppeteerService extends BaseStreamingService {
       inputElements: IClickableElement[];
     } = await this.getAllPageElements();
 
+    // Combine elements, but ensure we don't exceed reasonable limits for the LLM
+    const MAX_COMBINED_ELEMENTS = 400;
     const combinedElements = [
       ...elements.clickableElements,
       ...elements.inputElements,
-    ];
+    ].slice(0, MAX_COMBINED_ELEMENTS);
     
     // Get context safely without non-null assertion
     const contexts = PuppeteerService.browser.contexts();
@@ -461,7 +463,30 @@ export class PuppeteerService extends BaseStreamingService {
       };
     });
 
-    return elements;
+    // Filter elements for visibility and implement maximum limits
+    const visibleClickableElements = elements.clickableElements
+      .filter(e => e.isVisibleInCurrentViewPort && e.isVisuallyVisible);
+
+    const visibleInputElements = elements.inputElements
+      .filter(e => e.isVisibleInCurrentViewPort && e.isVisuallyVisible);
+
+    // Define maximum limits
+    const MAX_CLICKABLE = 150;
+    const MAX_INPUT = 50;
+
+    // Prioritize elements with text/labels and ensure we don't exceed limits
+    const prioritizedClickable = visibleClickableElements
+      .sort((a, b) => (a.text ? 1 : 0) - (b.text ? 1 : 0))
+      .slice(0, MAX_CLICKABLE);
+
+    const prioritizedInput = visibleInputElements
+      .slice(0, MAX_INPUT);
+
+    // Return the filtered elements
+    return {
+      clickableElements: prioritizedClickable,
+      inputElements: prioritizedInput
+    };
   }
 
   async markElements(
