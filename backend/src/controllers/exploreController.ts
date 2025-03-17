@@ -14,8 +14,10 @@ export class ExploreController {
     res: Response,
   ): Promise<void> {
     try {
-      !ChatService.isProviderAvailable() &&
-        ChatService.createProvider(Modes.EXPLORE);
+      // Always reset and recreate the provider with explore mode to prevent context bleed
+      ChatService.resetProvider();
+      ChatService.createProvider(Modes.EXPLORE);
+      console.log("Explore provider created with mode: EXPLORE");
       // Get data from request body
       const { message, imageData, history, omniParserResult } = req.body;
 

@@ -8,18 +8,19 @@ import { ExploreActionTypes, Modes } from "../types";
 export class ChatController {
   static async handleChatMessage(req: Request, res: Response): Promise<void> {
     try {
-      !ChatService.isProviderAvailable() &&
-        ChatService.createProvider(Modes.REGRESSION);
-      // Get data from request body
+      // Get data from request body and query params
       const { message, history, omniParserResult } = req.body;
-
-      // Get remaining params from query string
       const folderPath = req.query.folderPath as string;
       const currentChatId = req.query.currentChatId as string;
       const source = req.query.source as StreamingSource | undefined;
       const saveScreenshots = req.query.saveScreenshots as string;
-      const mode = req.query.mode as Modes;
       const type = req.query.type as ExploreActionTypes;
+
+      // Always reset and recreate the provider with the correct mode to prevent context bleed
+      const requestedMode = req.query.mode as Modes || Modes.REGRESSION;
+      ChatService.resetProvider();
+      ChatService.createProvider(requestedMode);
+      console.log(`Chat provider created with mode: ${requestedMode}`);
 
       if (!message || !Array.isArray(history)) {
         res.status(400).json({
@@ -50,7 +51,7 @@ export class ChatController {
           res,
           message,
           history,
-          mode,
+          requestedMode,
           type,
           latestScreenshot,
           source,

@@ -12,6 +12,7 @@ import fileSystemRoutes from "./routes/fileSystemRoutes";
 import actionRoutes from "./routes/actionRoutes";
 import exploreRoutes from "./routes/exploreRoutes";
 import historyRoutes from "./routes/historyRoutes";
+import modeRoutes from "./routes/modeRoutes";
 import StreamingSourceService from "./services/StreamingSourceService";
 import { StreamingController } from "./controllers/streamingController";
 import { ActionExecutorService } from "./services/actionExecutorService";
@@ -63,6 +64,7 @@ app.use("/api/filesystem", fileSystemRoutes);
 app.use("/api/actions", actionRoutes);
 app.use("/api/explore", exploreRoutes);
 app.use("/api/history", historyRoutes);
+app.use("/api/mode", modeRoutes);
 
 // Socket.io connection handling
 io.on("connection", (socket) => {

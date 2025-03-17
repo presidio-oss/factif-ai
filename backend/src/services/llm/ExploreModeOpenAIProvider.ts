@@ -41,6 +41,13 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
   static pageRouter = new Set<string>(); // Tracks visited page URLs
   static visitedPagesCount = 0; // Tracks number of unique pages visited
 
+  // Static method to reset state when switching modes
+  static resetState() {
+    ExploreModeOpenAIProvider.pageRouter.clear();
+    ExploreModeOpenAIProvider.visitedPagesCount = 0;
+    console.log("ExploreModeOpenAIProvider state has been reset");
+  }
+
   private client: OpenAI | AzureOpenAI;
   model: string;
 

@@ -34,6 +34,7 @@ export const sendChatMessage = async (
     currentChatId,
     source,
     saveScreenshots: saveScreenshots.toString(),
+    mode: "regression", // Explicitly set normal chat mode
   });
 
   // Create the EventSource with POST method using a fetch API
@@ -205,6 +206,7 @@ export const sendExploreChatMessage = async (
     source,
     type,
     saveScreenshots: saveScreenshots.toString(),
+    mode: "explore", // Explicitly set explore mode
   });
 
   // Create the EventSource with POST method using a fetch API

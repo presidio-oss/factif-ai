@@ -40,6 +40,13 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
   static pageRouter = new Set<string>(); // Tracks visited page URLs
   static visitedPagesCount = 0; // Tracks number of unique pages visited
 
+  // Static method to reset state when switching modes
+  static resetState() {
+    ExploreModeAnthropicProvider.pageRouter.clear();
+    ExploreModeAnthropicProvider.visitedPagesCount = 0;
+    console.log("ExploreModeAnthropicProvider state has been reset");
+  }
+
   private client: Anthropic | AnthropicBedrock;
 
   constructor() {

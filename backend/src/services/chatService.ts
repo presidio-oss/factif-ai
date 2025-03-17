@@ -15,8 +15,17 @@ import { IProcessedScreenshot } from "./interfaces/BrowserService";
 
 export class ChatService {
   private static provider: LLMProvider;
+  private static currentMode: Modes | null = null;
 
   static createProvider(mode: Modes) {
+    // If we're switching modes, reset the provider first
+    if (this.currentMode !== null && this.currentMode !== mode) {
+      this.resetProvider();
+    }
+    
+    // Store the current mode
+    this.currentMode = mode;
+    
     if (mode === Modes.REGRESSION) {
       switch (config.llm.provider) {
         case "openai":
@@ -121,5 +130,20 @@ export class ChatService {
 
   static isProviderAvailable() {
     return !!ChatService.provider;
+  }
+
+  static resetProvider() {
+    // Clean up the current provider
+    this.provider = undefined as unknown as LLMProvider;
+    console.log("LLM provider reset");
+    
+    // Reset the static state in ExploreModeProviders
+    if (this.currentMode === Modes.EXPLORE) {
+      // Call the dedicated static resetState methods that we added to each provider
+      ExploreModeOpenAIProvider.resetState();
+      ExploreModeAnthropicProvider.resetState();
+      
+      console.log("All explore mode providers have been reset");
+    }
   }
 }

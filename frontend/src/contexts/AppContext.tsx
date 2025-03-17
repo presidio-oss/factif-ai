@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import { StreamingSource } from "@/types/api.types.ts";
+import ModeService from "@/services/modeService";
 
 interface AppContextType {
   isChatStreaming: boolean;
@@ -22,6 +23,7 @@ interface AppContextType {
   setType: React.Dispatch<React.SetStateAction<string>>;
   mode: string;
   type: string;
+  switchMode: (newMode: "explore" | "regression") => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -49,6 +51,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [mode, setMode] = useState<string>("explore");
   const [type, setType] = useState<string>("explore");
 
+  // Initialize with proper backend mode
+  useEffect(() => {
+    const initializeMode = async () => {
+      try {
+        // Check if we need to reset the backend mode
+        await ModeService.resetContext(mode as "explore" | "regression");
+        console.log(`Mode initialized to: ${mode}`);
+      } catch (error) {
+        console.error("Failed to initialize mode:", error);
+      }
+    };
+    
+    initializeMode();
+  }, []); // Only run once on component mount
+
+  const switchMode = async (newMode: "explore" | "regression") => {
+    if (isChatStreaming) {
+      console.warn("Cannot switch mode while streaming is in progress");
+      return;
+    }
+    
+    try {
+      setHasActiveAction(true);
+      // Reset context to prevent contamination
+      await ModeService.resetContext(newMode);
+      
+      // Update local state
+      setMode(newMode);
+      setType(newMode); // Also update type to match the mode
+      console.log(`Successfully switched to ${newMode} mode`);
+    } catch (error) {
+      console.error("Failed to switch mode:", error);
+    } finally {
+      setHasActiveAction(false);
+    }
+  };
+
   const value = {
     isChatStreaming,
     setIsChatStreaming,
@@ -70,6 +109,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setMode,
     type,
     setType,
+    switchMode,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
