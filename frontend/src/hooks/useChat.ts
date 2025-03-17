@@ -3,6 +3,7 @@ import { sendChatMessage } from "../services/api";
 import { ChatMessage, OmniParserResult } from "../types/chat.types";
 import { useAppContext } from "../contexts/AppContext";
 import { MessageProcessor } from "../services/messageProcessor";
+import ModeService from "../services/modeService";
 
 export const useChat = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -31,6 +32,29 @@ export const useChat = () => {
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+  
+  // Track current chat ID changes to reset context when a new chat is created
+  const prevChatIdRef = useRef(currentChatId);
+  useEffect(() => {
+    const resetContextForNewChat = async () => {
+      // Only run on chat ID changes (not first load)
+      if (prevChatIdRef.current && prevChatIdRef.current !== currentChatId) {
+        console.log(`Chat ID changed from ${prevChatIdRef.current} to ${currentChatId}, resetting context`);
+        try {
+          setHasActiveAction(true);
+          await ModeService.resetContext("regression");
+          console.log("Context reset for new chat session");
+        } catch (error) {
+          console.error("Failed to reset context for new chat session:", error);
+        } finally {
+          setHasActiveAction(false);
+        }
+      }
+      prevChatIdRef.current = currentChatId;
+    };
+    
+    resetContextForNewChat();
+  }, [currentChatId, setHasActiveAction]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -195,6 +219,22 @@ export const useChat = () => {
                 isPartial: false,
                 isHistory: true,
               }));
+
+              // Reset context when a chat interaction completes to ensure next chat starts fresh
+              try {
+                // Only reset if there's no action to handle (actions will have their own flow)
+                if (!processedResponse.actionResult) {
+                  console.log("Chat interaction complete, resetting context for next interaction");
+                  await ModeService.resetContext("regression");
+                  console.log("Context reset after chat completion");
+                  
+                  // Reset first message flag so next message will be treated as a fresh start
+                  isFirstMessageRef.current = true;
+                }
+              } catch (error) {
+                console.error("Failed to reset context after chat completion:", error);
+              }
+              
               setIsChatStreaming(false);
               activeMessageId.current = null;
               isProcessing.current = false;
@@ -255,6 +295,9 @@ export const useChat = () => {
     }
   };
 
+  // Track if this is the first message in the chat
+  const isFirstMessageRef = useRef(true);
+
   const sendMessage = async (
     message: string,
     sendToBackend: boolean = true,
@@ -272,14 +315,42 @@ export const useChat = () => {
 
     // Send to backend if needed
     if (sendToBackend) {
+      // If this is the first message of the session, ensure context is reset
+      if (isFirstMessageRef.current && messagesRef.current.length <= 1) {
+        console.log("First message in chat session, ensuring fresh context");
+        try {
+          setHasActiveAction(true);
+          await ModeService.resetContext("regression");
+          console.log("Context reset before first message");
+        } catch (error) {
+          console.error("Failed to reset context before first message:", error);
+        } finally {
+          setHasActiveAction(false);
+          // Mark that we've sent the first message
+          isFirstMessageRef.current = false;
+        }
+      }
+      
       await handleChatMessage(message, imageData);
       // Reset omni parser result after sending
       setLatestOmniParserResult(null);
     }
   };
 
-  const clearChat = () => {
+  const clearChat = async () => {
     if (!isChatStreaming) {
+      try {
+        setHasActiveAction(true);
+        // Reset LLM context in the backend to ensure a fresh start
+        await ModeService.resetContext("regression");
+        console.log("Context reset for new chat");
+      } catch (error) {
+        console.error("Failed to reset context for new chat:", error);
+      } finally {
+        setHasActiveAction(false);
+      }
+
+      // Clear local state
       hasPartialMessage.current = false;
       activeMessageId.current = null;
       isProcessing.current = false;

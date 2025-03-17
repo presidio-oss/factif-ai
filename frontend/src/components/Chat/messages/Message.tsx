@@ -218,7 +218,7 @@ const MessagePartRenderer = ({ part }: { part: MessagePart }) => {
             {part.clickableElements.map(
               (item: IExploredClickableElement, index: number) => (
                 <div
-                  key={item.text}
+                  key={`${item.text}-${index}`}
                   className="text-sm p-2 border-b border-b-gray-700 last:border-b-0"
                 >
                   <span className="text-foreground/60 text-sm">

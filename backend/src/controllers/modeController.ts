@@ -23,9 +23,11 @@ export class ModeController {
 
       // Reset the provider first to clear any static state
       ChatService.resetProvider();
+      console.log(`Mode switch: Provider reset for mode change to ${mode}`);
       
       // Create a new provider with the specified mode
       ChatService.createProvider(mode as Modes);
+      console.log(`Mode switch: New provider created with mode ${mode}`);
 
       res.status(200).json({
         success: true,

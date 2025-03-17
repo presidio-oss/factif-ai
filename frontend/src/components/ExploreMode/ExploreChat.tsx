@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChatInput } from "../Chat/ChatInput";
 import { ChatMessages } from "../Chat/ChatMessages";
 import { useAppContext } from "@/contexts/AppContext";
 import { useExploreModeContext } from "@/contexts/ExploreModeContext";
 import { useExploreChat } from "@/hooks/useExploreChat";
+import ModeService from "@/services/modeService";
 import {
   Button,
   Modal,
@@ -19,15 +20,36 @@ import { emergencyStorageCleanup } from "@/utils/storageCleanup";
 
 export const ExploreChat = () => {
   const navigate = useNavigate();
-  const { currentChatId, setCurrentChatId, isChatStreaming, type } =
+  const { currentChatId, setCurrentChatId, isChatStreaming, type, setHasActiveAction } =
     useAppContext();
   const { showRecentChats, setShowRecentChats } = useExploreModeContext();
   const { messages, sendMessage, clearChat, messagesEndRef, stopStreaming } =
     useExploreChat();
+  const initialLoadRef = useRef(true);
 
   // State for storage warning modal
   const [isStorageWarningOpen, setIsStorageWarningOpen] = useState(false);
   const [cleanupItemsCount, setCleanupItemsCount] = useState(0);
+
+  // Reset context when component first mounts to ensure a fresh start
+  useEffect(() => {
+    const initializeExploreChat = async () => {
+      if (initialLoadRef.current) {
+        try {
+          setHasActiveAction(true);
+          await ModeService.resetContext("explore");
+          console.log("Context reset on ExploreChat component mount");
+          initialLoadRef.current = false;
+        } catch (error) {
+          console.error("Failed to reset explore context on component mount:", error);
+        } finally {
+          setHasActiveAction(false);
+        }
+      }
+    };
+    
+    initializeExploreChat();
+  }, [setHasActiveAction]);
 
   useEffect(() => {
     if (!currentChatId) {

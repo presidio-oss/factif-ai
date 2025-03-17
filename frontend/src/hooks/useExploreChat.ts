@@ -8,8 +8,8 @@ import { ChatMessage, OmniParserResult } from "../types/chat.types";
 import { useAppContext } from "@/contexts/AppContext";
 import { useExploreModeContext } from "@/contexts/ExploreModeContext";
 import { MessageProcessor } from "../services/messageProcessor";
-import SocketService from "../services/socketService";
 import UIInteractionService from "../services/uiInteractionService";
+import ModeService from "../services/modeService";
 import {
   IExploredClickableElement,
   IExploreGraphData,
@@ -953,6 +953,17 @@ export const useExploreChat = () => {
 
   const clearChat = async () => {
     if (!isChatStreaming) {
+      try {
+        setHasActiveAction(true);
+        // Reset LLM context in the backend to ensure a fresh start
+        await ModeService.resetContext("explore");
+        console.log("Context reset for new explore chat");
+      } catch (error) {
+        console.error("Failed to reset context for new explore chat:", error);
+      } finally {
+        setHasActiveAction(false);
+      }
+
       hasPartialMessage.current = false;
       activeMessageId.current = null;
       isProcessing.current = false;

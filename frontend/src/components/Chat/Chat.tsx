@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChatInput } from "./ChatInput";
 import { ChatMessages } from "./ChatMessages";
@@ -6,12 +6,34 @@ import { useAppContext } from "../../contexts/AppContext";
 import { useChat } from "../../hooks/useChat";
 import { Button } from "@nextui-org/react";
 import { Suggestions } from "./components/Suggestions";
+import ModeService from "../../services/modeService";
 
 export const Chat = () => {
   const navigate = useNavigate();
-  const { currentChatId, setCurrentChatId, isChatStreaming } = useAppContext();
+  const { currentChatId, setCurrentChatId, isChatStreaming, setHasActiveAction } = useAppContext();
   const { messages, sendMessage, clearChat, messagesEndRef, stopStreaming } =
     useChat();
+  const initialLoadRef = useRef(true);
+
+  // Reset context when component first mounts to ensure a fresh start
+  useEffect(() => {
+    const initializeChat = async () => {
+      if (initialLoadRef.current) {
+        try {
+          setHasActiveAction(true);
+          await ModeService.resetContext("regression");
+          console.log("Context reset on Chat component mount");
+          initialLoadRef.current = false;
+        } catch (error) {
+          console.error("Failed to reset context on component mount:", error);
+        } finally {
+          setHasActiveAction(false);
+        }
+      }
+    };
+    
+    initializeChat();
+  }, [setHasActiveAction]);
 
   useEffect(() => {
     if (!currentChatId) {
