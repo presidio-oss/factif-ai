@@ -1,6 +1,7 @@
 import { memo, useEffect, useState, useRef } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { INodeData } from "@/types/message.types.ts";
+import ImageStorageService from "@/services/ImageStorageService";
 
 export default memo(
   ({
@@ -16,12 +17,15 @@ export default memo(
   }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
+    const [resolvedImageUrl, setResolvedImageUrl] = useState<string | undefined>(undefined);
+    const imageServiceRef = useRef<ImageStorageService>(ImageStorageService.getInstance());
 
     // Default values for potentially missing data
     const safeData = {
       label: data?.label || "",
       edges: Array.isArray(data?.edges) ? data.edges : [],
-      imageData: data?.imageData || undefined, // Ensure this is explicitly undefined if missing
+      imageData: data?.imageData || undefined,
+      imageRef: data?.imageRef || undefined,
       category: data?.category || "uncategorized",
       categoryDescription: data?.categoryDescription || "",
       categoryColor: data?.categoryColor || "#607d8b", // Default gray color
@@ -30,36 +34,67 @@ export default memo(
     // Use a ref to track if this is the first render
     const isFirstRender = useRef(true);
 
+    // Resolve image URL from either direct data or reference
     useEffect(() => {
       if (isFirstRender.current) {
         console.log("PageNode initial render:", data?.label);
         isFirstRender.current = false;
       }
 
-      // Only reload image if the imageData actually changed
-      if (!safeData.imageData) {
-        setImageLoaded(false);
+      // Reset state on data change
+      setImageLoaded(false);
+      
+      // Check for imageRef first (preferred approach)
+      if (safeData.imageRef) {
+        // Get the thumbnail first for better performance
+        const thumbnail = imageServiceRef.current.getThumbnail(safeData.imageRef);
+        if (thumbnail) {
+          setResolvedImageUrl(thumbnail);
+          setImageError(false);
+        } else {
+          // Fallback to full image if thumbnail not ready
+          const fullImage = imageServiceRef.current.getImage(safeData.imageRef);
+          if (fullImage) {
+            setResolvedImageUrl(fullImage);
+            setImageError(false);
+          } else {
+            // If neither is available, we have an error
+            setImageError(true);
+          }
+        }
+      } 
+      // Legacy direct imageData support
+      else if (safeData.imageData) {
+        setResolvedImageUrl(safeData.imageData);
+        setImageError(false);
+      } 
+      // No image available
+      else {
         setImageError(true);
+      }
+    }, [safeData.imageRef, safeData.imageData]);
+
+    // Handle image loading
+    useEffect(() => {
+      if (!resolvedImageUrl) {
+        setImageLoaded(false);
         return;
       }
-
-      // Check if we've already tried to load this image
-      const imageUrl = safeData.imageData;
 
       // Preload image to check if it's valid
       const img = new Image();
       img.onload = () => setImageLoaded(true);
       img.onerror = () => setImageError(true);
-
+      
       // Set the source last to ensure event handlers are registered
-      img.src = imageUrl;
+      img.src = resolvedImageUrl;
 
       // Clean up the image object on unmount
       return () => {
         img.onload = null;
         img.onerror = null;
       };
-    }, [safeData.imageData]);
+    }, [resolvedImageUrl]);
 
     return (
       <>
@@ -96,7 +131,7 @@ export default memo(
               }
             })()}
           </div>
-          {safeData.imageData && !imageError ? (
+          {resolvedImageUrl && !imageError ? (
             <div className="relative w-full aspect-video">
               {!imageLoaded && (
                 <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
@@ -104,7 +139,7 @@ export default memo(
                 </div>
               )}
               <img
-                src={safeData.imageData}
+                src={resolvedImageUrl}
                 alt="page-screenshot"
                 className={`w-full ${imageLoaded ? "block" : "hidden"}`}
                 onLoad={() => setImageLoaded(true)}

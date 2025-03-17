@@ -152,14 +152,67 @@ export const useExploreChat = () => {
     }
   }, [messages, currentChatId, setRecentSessions]);
 
-  // Reset streaming state only on unmount
+  // Simple browser state tracking for this component instance
+  const browserLaunched = useRef(false);
+
+  // Reset streaming state and clean up resources on unmount
   useEffect(() => {
     return () => {
+      // First clean up state
       hasPartialMessage.current = false;
       activeMessageId.current = null;
       setIsChatStreaming(false);
+
+      // Then ensure browser is closed on component unmount
+      try {
+        // We need to use an immediately invoked async function since useEffect cleanup can't be async
+        (async () => {
+          const closeAction = {
+            type: "perform_action",
+            action: "close",
+          };
+          await executeAction(closeAction, streamingSource);
+          console.log("Browser instance closed on ExploreChat unmount");
+          browserLaunched.current = false;
+        })();
+      } catch (error) {
+        console.error("Failed to close browser on unmount:", error);
+        browserLaunched.current = false;
+      }
     };
-  }, [setIsChatStreaming]);
+  }, [setIsChatStreaming, streamingSource]);
+
+  // Helper function to ensure a browser is available when needed
+  const ensureBrowserAvailable = async (url?: string) => {
+    // Skip if we already know we have a browser
+    if (browserLaunched.current) {
+      console.log("Browser already launched for explore mode, continuing");
+      return true;
+    }
+
+    try {
+      // Launch with specified URL or a blank page
+      const launchAction = {
+        type: "perform_action",
+        action: "launch",
+        url: url || "about:blank", // Use provided URL or blank page
+      };
+      
+      console.log("Ensuring browser is available for explore mode:", url || "about:blank");
+      setHasActiveAction?.(true);
+      await executeAction(launchAction, streamingSource);
+      setHasActiveAction?.(false);
+      
+      // Mark browser as launched
+      browserLaunched.current = true;
+      console.log("Browser successfully launched for explore mode");
+      return true;
+    } catch (error) {
+      console.error("Failed to ensure browser availability in explore mode:", error);
+      browserLaunched.current = false;
+      return false;
+    }
+  };
 
   // Scroll management
   const scrollToBottom = () => {
@@ -281,10 +334,60 @@ export const useExploreChat = () => {
     localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
   };
 
+  // Add a periodic state persistence function to ensure graph data isn't lost
+  useEffect(() => {
+    // Only set up timer if we have graph data to persist
+    if (exploreGraphData.current?.nodes?.length > 0) {
+      const persistenceInterval = setInterval(() => {
+        // Check if we still have graph data to persist
+        if (exploreGraphData.current?.nodes?.length > 0) {
+          console.log("Periodic graph data persistence:", 
+                     exploreGraphData.current.nodes.length, "nodes");
+          setGraphData(exploreGraphData.current);
+          localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
+        }
+      }, 30000); // Every 30 seconds
+      
+      return () => clearInterval(persistenceInterval);
+    }
+  }, [exploreGraphData.current?.nodes?.length, setGraphData]);
+
   const handleEdgeAndNodeCreation = (
     url: string,
     imageData?: string | IProcessedScreenshot,
   ) => {
+    if (!url) {
+      console.error("Cannot create node: URL is empty");
+      return uuid(); // Return a node ID anyway to prevent further errors
+    }
+    
+    // Make sure exploreGraphData.current is properly initialized
+    if (!exploreGraphData.current || !exploreGraphData.current.nodes) {
+      console.warn("exploreGraphData.current is not properly initialized, resetting it");
+      
+      // Try to load from localStorage first before resetting
+      try {
+        const storedMap = localStorage.getItem("MAP");
+        if (storedMap) {
+          const parsedMap = JSON.parse(storedMap);
+          if (parsedMap && Array.isArray(parsedMap.nodes) && parsedMap.nodes.length > 0) {
+            console.log("Restored graph data from localStorage:", parsedMap.nodes.length, "nodes");
+            exploreGraphData.current = parsedMap;
+          } else {
+            exploreGraphData.current = { nodes: [], edges: [] };
+          }
+        } else {
+          exploreGraphData.current = { nodes: [], edges: [] };
+        }
+      } catch (error) {
+        console.error("Failed to restore graph data from localStorage:", error);
+        exploreGraphData.current = { nodes: [], edges: [] };
+      }
+      
+      // Immediately update the context to ensure the graph UI knows about this change
+      setGraphData(exploreGraphData.current);
+    }
+    
     const canCreateNode = createEdgeOrNode(exploreGraphData.current.nodes, url);
     const nodeId = !canCreateNode.createNode
       ? (canCreateNode.node?.id as string)
@@ -300,10 +403,16 @@ export const useExploreChat = () => {
           url,
           hasImageData: !!imageData,
           imageDataType: imageData ? typeof imageData : "undefined",
+          nodeId,
         });
       }
 
       createConstructNode(nodeId, { label: url, imageData });
+      
+      // After creating the first node, explicitly log the graph state
+      if (isFirstNode) {
+        console.log("After creating first node, graph state:", JSON.stringify(exploreGraphData.current));
+      }
     } else if (
       isFirstNode &&
       !canCreateNode.node?.data.imageData &&
@@ -763,53 +872,29 @@ export const useExploreChat = () => {
               urlMatch[1] = `https://${urlMatch[1]}`;
             }
           }
+          
           if (urlMatch && urlMatch[1]) {
-            console.log(
-              "Auto-launching browser for explore request with URL:",
-              urlMatch[1],
-            );
-
-            const socketService = SocketService.getInstance();
-            const socket = socketService.getSocket();
-
-            // Check if we have a socket but need to auto-launch the browser
-            if (socket) {
-              // Launch the browser with the extracted URL
-              const launchAction = {
-                type: "perform_action",
-                action: "launch",
-                url: urlMatch[1],
-              };
-
-              try {
-                setHasActiveAction?.(true);
-                const response = await executeAction(
-                  launchAction,
-                  streamingSource,
-                );
-                console.log("Browser auto-launched for explore request");
-
-                // After launching, explicitly set the URL in UIInteractionService
-                if (response.status === "success") {
-                  // Set the URL in UIInteractionService to update the URL bar
-                  UIInteractionService.getInstance().handleSourceChange(
-                    streamingSource,
-                    urlMatch[1],
-                  );
-                }
-
-                // Wait briefly to ensure the browser is ready
-                await new Promise((resolve) => setTimeout(resolve, 1000));
-              } catch (error) {
-                console.error(
-                  "Failed to auto-launch browser for explore:",
-                  error,
-                );
-                // Continue with the message even if auto-launch failed
-              } finally {
-                setHasActiveAction?.(false);
-              }
+            console.log("Auto-launching browser for explore request with URL:", urlMatch[1]);
+            
+            // Use our ensureBrowserAvailable helper to launch with the specific URL
+            const launched = await ensureBrowserAvailable(urlMatch[1]);
+            
+            if (launched) {
+              // Update URL in UI since browser was launched successfully
+              UIInteractionService.getInstance().handleSourceChange(
+                streamingSource, 
+                urlMatch[1]
+              );
+              
+              // Mark browser as launched so we don't try again
+              browserLaunched.current = true;
+              
+              // Wait briefly to ensure the browser is ready
+              await new Promise((resolve) => setTimeout(resolve, 1000));
             }
+          } else {
+            // No URL found, but we should still ensure a browser is available for explore mode
+            await ensureBrowserAvailable();
           }
         } catch (error) {
           console.error("Error in auto-launch logic:", error);
@@ -828,6 +913,34 @@ export const useExploreChat = () => {
       isProcessing.current = false;
       messagesRef.current = [];
       setMessages([]);
+
+      // First, properly close any existing browser instance
+      try {
+        // Execute the close action to ensure browser is properly closed
+        const closeAction = {
+          type: "perform_action",
+          action: "close",
+        };
+        await executeAction(closeAction, streamingSource);
+        browserLaunched.current = false;
+        console.log("Browser instance closed successfully");
+      } catch (error) {
+        console.error("Failed to close browser:", error);
+        browserLaunched.current = false;
+      }
+
+      // Reset graph data for a new chat
+      exploreGraphData.current = { nodes: [], edges: [] };
+      exploreQueue.current = {};
+      exploreRoute.current = [];
+      currentlyExploring.current = null;
+      setGraphData({ nodes: [], edges: [] });
+      
+      // Clear localStorage MAP data to ensure a fresh start
+      localStorage.removeItem("MAP");
+      localStorage.removeItem("started_explore");
+      
+      console.log("Graph data reset for new chat");
 
       // If we have a chatId, tell the backend to delete its session
       if (currentChatId) {
@@ -866,9 +979,10 @@ export const useExploreChat = () => {
     if (isChatStreaming) return;
 
     try {
+      console.log("Loading session:", sessionId);
       const session = await getSession(sessionId);
       if (!session) {
-        // Quietly handle missing sessions without error logging
+        console.warn(`Session ${sessionId} not found`);
         return;
       }
 
@@ -888,11 +1002,24 @@ export const useExploreChat = () => {
         messagesRef.current = [];
       }
 
-      // Load graph data
-      if (session.graphData) {
-        exploreGraphData.current = session.graphData;
-        setGraphData(session.graphData);
+      // Load graph data with enhanced validation and debugging
+      console.log("Session graph data:", session?.graphData);
+      
+      if (session.graphData && (session.graphData.nodes || session.graphData.edges)) {
+        // Verify graph data structure is valid
+        const validGraphData = {
+          nodes: Array.isArray(session.graphData.nodes) ? session.graphData.nodes : [],
+          edges: Array.isArray(session.graphData.edges) ? session.graphData.edges : []
+        };
+        
+        console.log("Graph data nodes count:", validGraphData.nodes.length);
+        console.log("Graph data edges count:", validGraphData.edges.length);
+        
+        // Update the ref and context
+        exploreGraphData.current = validGraphData;
+        setGraphData(validGraphData);
       } else {
+        console.log("No valid graph data in session, initializing empty graph");
         exploreGraphData.current = { nodes: [], edges: [] };
         setGraphData({ nodes: [], edges: [] });
       }
@@ -903,7 +1030,7 @@ export const useExploreChat = () => {
       isProcessing.current = false;
 
       console.log(
-        `Loaded session ${sessionId} with ${session.messages?.length || 0} messages`,
+        `Loaded session ${sessionId} with ${session.messages?.length || 0} messages and ${exploreGraphData.current.nodes.length} nodes`,
       );
 
       // Close recent chats panel

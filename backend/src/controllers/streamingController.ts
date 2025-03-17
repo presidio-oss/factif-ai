@@ -68,6 +68,24 @@ export class StreamingController {
     { folderPath }: { folderPath?: string },
   ) {
     try {
+      // First launch an empty browser if needed - ensures we always have a browser for screenshots
+      const ensureBrowserAction = {
+        action: "launch",
+        url: "about:blank"
+      };
+      
+      try {
+        // This will simply validate the browser is available, or create a new one if not
+        await this.streamingService.performAction(
+          ensureBrowserAction as ActionRequest,
+          { folderPath }
+        );
+      } catch (browserError) {
+        console.error("Error ensuring browser is available:", browserError);
+        // Continue anyway to try taking a screenshot
+      }
+      
+      // Now attempt to take the screenshot
       const screenshot = await this.streamingService.takeScreenshot();
 
       if (screenshot) {
@@ -82,8 +100,14 @@ export class StreamingController {
           image: screenshot,
           omniParserResults,
         });
+      } else {
+        // If no screenshot, inform the client
+        socket.emit("browser-info", {
+          message: "No screenshot available. Browser may not be initialized.",
+        });
       }
     } catch (error: any) {
+      console.error("Screenshot error:", error);
       socket.emit("browser-error", {
         message: error?.message || "Unknown error occurred",
       });

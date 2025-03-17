@@ -204,7 +204,18 @@ const nodeTypes = {
 };
 
 export function ExploreGraph() {
-  const { graphData } = useExploreModeContext();
+  const { graphData, setShowGraph } = useExploreModeContext();
+  
+  // Add debug logging to track when graph data is received and if it's empty
+  useEffect(() => {
+    console.log("GraphData received in ExploreGraph:", graphData);
+    console.log("Nodes length:", graphData?.nodes?.length || 0);
+    
+    // If we have no nodes, log a warning
+    if (!graphData?.nodes?.length) {
+      console.warn("Graph data is empty - no nodes to display");
+    }
+  }, [graphData]);
   const [routeCategories, setRouteCategories] = useState<
     Record<string, RouteCategory>
   >({});
@@ -430,7 +441,22 @@ export function ExploreGraph() {
 
   // Update nodes when graphData changes
   useEffect(() => {
-    if (!graphData) return;
+    console.log("GraphData update triggered:", {
+      hasGraphData: !!graphData,
+      nodesCount: graphData?.nodes?.length || 0,
+      edgesCount: graphData?.edges?.length || 0
+    });
+
+    if (!graphData) {
+      console.warn("No graph data available");
+      return;
+    }
+
+    // Validate graph data structure
+    if (!Array.isArray(graphData.nodes) || !Array.isArray(graphData.edges)) {
+      console.error("Invalid graph data structure:", graphData);
+      return;
+    }
 
     // Map of current node IDs to their categories and descriptions
     const categoryMap = new Map();
@@ -776,32 +802,47 @@ export function ExploreGraph() {
 
   return (
     <div style={{ width: "100%", height: "100%" }}>
-      <ReactFlow
-        nodes={[...categoryContainers, ...validNodes]}
-        edges={validEdges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onNodeClick={(_, node) => {
-          // Only set selectedNode for pageNode types, not containers
-          if (node.type === "pageNode") {
-            setSelectedNode((prev) => (prev === node.id ? null : node.id));
-          }
-        }}
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
-        nodeTypes={nodeTypes}
-        snapToGrid={false}
-        colorMode="dark"
-        minZoom={0.1}
-        maxZoom={1.5}
-        nodesDraggable={true}
-        elementsSelectable={true}
-        zoomOnScroll={true}
-        panOnScroll={true}
-        nodesFocusable={true}
-        edgesFocusable={true}
-      >
+      {(!graphData?.nodes || graphData.nodes.length === 0) ? (
+        <div className="flex flex-col items-center justify-center h-full text-gray-400">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+          <p className="text-xl font-light">No exploration data available</p>
+          <p className="text-sm mt-2">Start exploring a website to build the graph</p>
+          <button 
+            onClick={() => setShowGraph(false)}
+            className="mt-6 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            Return to Preview
+          </button>
+        </div>
+      ) : (
+        <ReactFlow
+          nodes={[...categoryContainers, ...validNodes]}
+          edges={validEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeClick={(_, node) => {
+            // Only set selectedNode for pageNode types, not containers
+            if (node.type === "pageNode") {
+              setSelectedNode((prev) => (prev === node.id ? null : node.id));
+            }
+          }}
+          fitView
+          fitViewOptions={{ padding: 0.3 }}
+          nodeTypes={nodeTypes}
+          snapToGrid={false}
+          colorMode="dark"
+          minZoom={0.1}
+          maxZoom={1.5}
+          nodesDraggable={true}
+          elementsSelectable={true}
+          zoomOnScroll={true}
+          panOnScroll={true}
+          nodesFocusable={true}
+          edgesFocusable={true}
+        >
         <Panel position="top-right" className="mr-4 mt-4">
           <FloatingGraphToggle />
         </Panel>
@@ -835,9 +876,10 @@ export function ExploreGraph() {
             </div>
           )}
         </Panel>
-        <Controls />
-        <Background />
-      </ReactFlow>
+          <Controls />
+          <Background />
+        </ReactFlow>
+      )}
     </div>
   );
 }

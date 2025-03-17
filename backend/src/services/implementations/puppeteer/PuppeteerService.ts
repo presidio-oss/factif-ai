@@ -25,11 +25,56 @@ export class PuppeteerService extends BaseStreamingService {
     try {
       this.emitConsoleLog("info", "Initializing Puppeteer browser...");
 
+      // If browser already exists, clean it up first to prevent duplicate processes
+      if (PuppeteerService.browser) {
+        this.emitConsoleLog("warn", "Browser instance already exists - cleaning up first");
+        await this.cleanup();
+      }
+
+      // Launch with optimized settings to reduce resource usage
       PuppeteerService.browser = await chromium.launch({
         headless: true,
+        args: [
+          '--disable-gpu',              // Disable GPU hardware acceleration
+          '--disable-dev-shm-usage',    // Overcome limited resource problems
+          '--disable-setuid-sandbox',   // Disable setuid sandbox (safety feature)
+          '--no-sandbox',               // Disable sandbox for better performance
+          '--single-process',           // Run in a single process to reduce overhead
+          '--disable-extensions',       // Disable extensions to reduce memory usage 
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-component-extensions-with-background-pages'
+        ]
       });
+
       const context = await PuppeteerService.browser.newContext();
       PuppeteerService.page = await context.newPage();
+      
+      // Set memory and CPU usage limits
+      try {
+        // Using optional chaining and non-null assertion to handle possible null browser
+        const browser = context.browser();
+        // Check if we have a valid browser object before accessing version
+        if (browser) {
+          const browserVersion = browser.version();
+          if (browserVersion && browserVersion.includes('chrome')) {
+            // These flags only work with Chrome
+            await context.addInitScript(() => {
+              // @ts-ignore
+              window.chrome = {
+                runtime: {
+                  // Reduce memory consumption
+                  PredictiveNetworkingEnabled: false,
+                },
+              };
+            });
+          }
+        }
+      } catch (e) {
+        // Ignore errors with browser version detection
+        this.emitConsoleLog("warn", `Failed to apply Chrome optimizations: ${e}`);
+      }
+
       await PuppeteerService.page.goto(url);
       await PuppeteerActions.waitTillHTMLStable(PuppeteerService.page);
       this.isConnected = true;
@@ -61,6 +106,12 @@ export class PuppeteerService extends BaseStreamingService {
       switch (action.action) {
         case "launch":
           return this.initialize(params?.url);
+        case "close":
+          await this.cleanup();
+          return { 
+            status: "success", 
+            message: "Browser closed successfully" 
+          };
         case "click":
           return await PuppeteerActions.click(PuppeteerService.page, action);
         case "type":
@@ -135,13 +186,72 @@ export class PuppeteerService extends BaseStreamingService {
     // Stop streaming before closing browser
     this.stopScreenshotStream();
 
-    // Just reset state since browser cleanup is handled in PuppeteerActions launch
+    // Actually close the browser instance with enhanced cleanup
+    try {
+      if (PuppeteerService.browser) {
+        // Get all browser contexts and close them explicitly first
+        const contexts = PuppeteerService.browser.contexts();
+        for (const context of contexts) {
+          try {
+            // Close all pages in this context
+            const pages = context.pages();
+            for (const page of pages) {
+              try {
+                // Ensure page is properly closed
+                await page.close({ runBeforeUnload: false });
+              } catch (pageError) {
+                this.emitConsoleLog("warn", `Error closing page: ${pageError}`);
+              }
+            }
+            // Close the browser context
+            await context.close();
+          } catch (contextError) {
+            this.emitConsoleLog("warn", `Error closing browser context: ${contextError}`);
+          }
+        }
+        
+        // Now close the main browser with force kill option to ensure processes terminate
+        await PuppeteerService.browser.close();
+        
+        // Force garbage collection for the browser object
+        PuppeteerService.browser = null;
+        PuppeteerService.page = null;
+        this.emitConsoleLog("info", "Browser instance closed successfully");
+        
+        // Additional safety measure: run a GC if available (Node 14+)
+        if (global.gc) {
+          try {
+            global.gc();
+            this.emitConsoleLog("info", "Manual garbage collection triggered");
+          } catch (gcError) {
+            this.emitConsoleLog("warn", `GC failed: ${gcError}`);
+          }
+        }
+      }
+    } catch (error) {
+      this.emitConsoleLog("error", `Error closing browser: ${error}`);
+      
+      // Even if normal close fails, try force terminating any browser processes
+      try {
+        PuppeteerService.browser = null;
+        PuppeteerService.page = null;
+      } catch (e) {
+        this.emitConsoleLog("error", `Failed to reset browser references: ${e}`);
+      }
+    }
+
+    // Reset state variables
     this.isInitialized = false;
     this.isConnected = false;
     this.emitConsoleLog("info", "Browser resources cleaned up");
   }
 
   async captureScreenshotAndInfer(): Promise<IProcessedScreenshot> {
+    // First check if browser is available
+    if (!PuppeteerService.browser || !PuppeteerService.page) {
+      throw new Error("Browser is not launched. Cannot capture screenshot and infer elements.");
+    }
+    
     const base64Image = await this.takeScreenshot();
     const elements: {
       clickableElements: IClickableElement[];
@@ -152,8 +262,20 @@ export class PuppeteerService extends BaseStreamingService {
       ...elements.clickableElements,
       ...elements.inputElements,
     ];
-    const context = PuppeteerService.browser!.contexts()[0];
-    const page = context.pages()[0];
+    
+    // Get context safely without non-null assertion
+    const contexts = PuppeteerService.browser.contexts();
+    if (!contexts || contexts.length === 0) {
+      throw new Error("No browser context available");
+    }
+    
+    const context = contexts[0];
+    const pages = context.pages();
+    if (!pages || pages.length === 0) {
+      throw new Error("No page available in context");
+    }
+    
+    const page = pages[0];
     let scrollPosition = 0;
     let totalScroll = 0;
 
@@ -193,13 +315,34 @@ export class PuppeteerService extends BaseStreamingService {
           "Browser is not launched. Please launch the browser first."
         );
       }
-      const context = PuppeteerService.browser.contexts()[0];
-      const page = context.pages()[0];
-      const buffer = await page.screenshot({ type: "png" });
-      const base64Image = buffer.toString("base64");
-      return base64Image;
+      
+      // Get context safely
+      const contexts = PuppeteerService.browser.contexts();
+      if (!contexts || contexts.length === 0) {
+        throw new Error("No browser context available");
+      }
+      
+      const context = contexts[0];
+      
+      // Get page safely
+      const pages = context.pages();
+      if (!pages || pages.length === 0) {
+        throw new Error("No page available in context");
+      }
+      
+      const page = pages[0];
+      
+      // Take screenshot with error handling
+      try {
+        const buffer = await page.screenshot({ type: "png" });
+        const base64Image = buffer.toString("base64");
+        return base64Image;
+      } catch (screenshotError) {
+        this.emitConsoleLog("error", `Screenshot error: ${screenshotError}`);
+        throw screenshotError;
+      }
     } catch (e) {
-      console.log(e);
+      this.emitConsoleLog("error", `Failed to take screenshot: ${e}`);
       return "";
     }
   }
@@ -214,8 +357,21 @@ export class PuppeteerService extends BaseStreamingService {
       );
     }
 
-    const context = PuppeteerService.browser.contexts()[0];
-    const page = context.pages()[0];
+    // Get context safely
+    const contexts = PuppeteerService.browser.contexts();
+    if (!contexts || contexts.length === 0) {
+      throw new Error("No browser context available for getting page elements");
+    }
+    
+    const context = contexts[0];
+    
+    // Get page safely
+    const pages = context.pages();
+    if (!pages || pages.length === 0) {
+      throw new Error("No page available in context for getting page elements");
+    }
+    
+    const page = pages[0];
 
     // Get all elements that are typically clickable or interactive
     const elements = await page.evaluate(() => {

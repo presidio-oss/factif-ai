@@ -72,6 +72,7 @@ export interface INodeData {
   label: string;
   edges: string[];
   imageData?: string;
+  imageRef?: string;  // Reference ID for image in ImageStorageService
   category?: string;
   categoryDescription?: string;
   categoryColor?: string;
