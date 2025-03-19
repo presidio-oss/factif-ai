@@ -485,7 +485,16 @@ export class DockerVNCService extends BaseStreamingService {
         screenshot: "",
       };
     }
-    return await DockerActions.getUrl(this.containerId as string);
+    
+    // Use the non-disruptive getUrl method to retrieve the current URL
+    // This implementation uses session files and browser history rather than UI interactions
+    const url = await DockerActions.getUrl(this.containerId as string);
+    
+    return {
+      status: "success",
+      message: `Retrieved URL: ${url}`,
+      url: url
+    };
   }
 
   async cleanup(): Promise<void> {

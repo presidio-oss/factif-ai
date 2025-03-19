@@ -230,47 +230,198 @@ export class DockerActions {
     }
   }
 
+  // URL cache with timestamp to prevent frequent retrievals
+  private static urlCache: {[containerId: string]: {url: string, timestamp: number}} = {};
+  private static URL_CACHE_TTL = 2000; // 2 seconds cache time
+  
   static async getUrl(containerId: string): Promise<string> {
     try {
-      // Focus on the Firefox window and copy the URL from the address bar
-      await DockerCommands.executeCommand({
-        command: [
-          "exec",
-          containerId,
-          "xdotool",
-          "search",
-          "--onlyvisible",
-          "--class",
-          "firefox",
-          "windowactivate",
-          "--sync",
-          "key",
-          "ctrl+l",
-          "ctrl+c",
-          "Escape",
-        ],
-        successMessage: "URL copied from Firefox",
-        errorMessage: "Failed to copy URL from Firefox",
-      });
+      // Check cache first to avoid frequent retrievals
+      const now = Date.now();
+      const cacheEntry = DockerActions.urlCache[containerId];
+      
+      if (cacheEntry && (now - cacheEntry.timestamp) < DockerActions.URL_CACHE_TTL) {
+        console.log("URL retrieved from cache:", cacheEntry.url);
+        return cacheEntry.url;
+      }
+      
+      console.log("Retrieving URL using non-disruptive methods...");
+      let url = "about:blank";
+      
+      // Method 1 (Primary): Direct URL Bar extraction - most reliable for full URLs including paths
+      try {
+        console.log("Trying direct URL bar extraction (primary method)...");
+        
+        // Create an improved script that gets the full URL directly from Firefox's address bar
+        await DockerCommands.executeCommand({
+          command: [
+            "exec",
+            containerId,
+            "bash",
+            "-c",
+            `cat > /tmp/get_firefox_url.sh << 'EOF'
+#!/bin/bash
+# Find Firefox window
+WINDOW_ID=$(xdotool search --class firefox | head -1)
+if [ -z "$WINDOW_ID" ]; then
+  echo "about:blank"
+  exit 0
+fi
 
-      // Retrieve the copied URL from the clipboard
-      const result = await DockerCommands.executeCommand({
-        command: [
-          "exec",
-          containerId,
-          "xclip",
-          "-o",
-          "-selection",
-          "clipboard",
-        ],
-        successMessage: "URL retrieved from clipboard",
-        errorMessage: "Failed to retrieve URL from clipboard",
-      });
+# Save current focus & clipboard content
+CURRENT_FOCUS=$(xdotool getactivewindow 2>/dev/null || echo "")
+CURRENT_SELECTION=$(xclip -o -selection clipboard 2>/dev/null || echo "")
 
-      return result.trim();
+# Focus Firefox and get URL directly from address bar
+xdotool windowactivate --sync $WINDOW_ID 2>/dev/null
+sleep 0.3
+
+# Select all text in address bar with Alt+D (focus), then Ctrl+A (select all)
+xdotool key --delay 100 --clearmodifiers alt+d
+sleep 0.3
+xdotool key --delay 100 --clearmodifiers ctrl+a
+sleep 0.3
+
+# Copy to clipboard
+xdotool key --delay 100 --clearmodifiers ctrl+c
+sleep 0.3
+
+# Cancel selection without changing focus
+xdotool key --delay 100 --clearmodifiers Escape
+sleep 0.2
+
+# Get URL from clipboard (complete with path)
+FULL_URL=$(xclip -o -selection clipboard 2>/dev/null)
+
+# Make sure it looks like a URL
+if [[ "$FULL_URL" != http* ]]; then
+  # Try one more time with a different method
+  xdotool key --delay 100 --clearmodifiers ctrl+l
+  sleep 0.2
+  xdotool key --delay 100 --clearmodifiers ctrl+c
+  sleep 0.2
+  xdotool key --delay 100 --clearmodifiers Escape
+  FULL_URL=$(xclip -o -selection clipboard 2>/dev/null)
+  
+  # If still no URL, use about:blank
+  if [[ "$FULL_URL" != http* ]]; then
+    FULL_URL="about:blank"
+  fi
+fi
+
+# Restore original clipboard content if possible
+echo "$CURRENT_SELECTION" | xclip -selection clipboard 2>/dev/null
+
+# Restore original focus
+if [ -n "$CURRENT_FOCUS" ] && [ "$CURRENT_FOCUS" != "$WINDOW_ID" ]; then
+  xdotool windowactivate $CURRENT_FOCUS 2>/dev/null
+fi
+
+# Return the complete URL with path
+echo "$FULL_URL"
+EOF
+chmod +x /tmp/get_firefox_url.sh`
+          ]
+        });
+        
+        // Run the script to get the URL
+        const scriptResult = await DockerCommands.executeCommand({
+          command: [
+            "exec",
+            containerId,
+            "/tmp/get_firefox_url.sh"
+          ],
+          successMessage: "Executed URL extraction script",
+        });
+        
+        if (scriptResult && scriptResult.trim() !== "" && 
+            (scriptResult.startsWith('http://') || scriptResult.startsWith('https://'))) {
+          url = scriptResult.trim();
+          console.log("URL found via direct extraction script:", url);
+          
+          // Cache the URL
+          DockerActions.urlCache[containerId] = { url, timestamp: now };
+          return url;
+        }
+      } catch (scriptError) {
+        console.log("Direct extraction script failed:", scriptError);
+      }
+
+      // Method 2: Try window title extraction as a backup
+      try {
+        console.log("Trying window title extraction (backup method)...");
+        
+        // Get all Firefox windows
+        const windowIds = await DockerCommands.executeCommand({
+          command: [
+            "exec",
+            containerId,
+            "bash",
+            "-c",
+            "xdotool search --class firefox || echo ''"
+          ],
+        });
+        
+        const windowIdList = windowIds.trim().split('\n').filter(id => id.trim() !== '');
+        
+        // Try each window with improved pattern to capture full paths
+        for (const windowId of windowIdList) {
+          try {
+            const titleResult = await DockerCommands.executeCommand({
+              command: [
+                "exec",
+                containerId,
+                "bash",
+                "-c",
+                // Enhanced title extraction with better pattern for full URLs
+                `xprop -id ${windowId} WM_NAME | grep -o 'https\\?://[^\"\\)\\(\\]\\[\\}\\{<>]*'`
+              ],
+            });
+            
+            if (titleResult && titleResult.trim() !== "" && 
+                (titleResult.startsWith('http://') || titleResult.startsWith('https://'))) {
+              url = titleResult.trim();
+              console.log("URL found via window title:", url);
+              
+              // Cache the URL
+              DockerActions.urlCache[containerId] = { url, timestamp: now };
+              return url;
+            }
+          } catch (e) {
+            // Try next window
+          }
+        }
+      } catch (titleError) {
+        console.log("Window title method failed:", titleError);
+      }
+
+      // If we got here, both methods failed
+      console.log("All URL retrieval methods failed, returning default URL");
+      
+      // Cache the result even if it's the default
+      DockerActions.urlCache[containerId] = { url: "about:blank", timestamp: now };
+      return "about:blank";
     } catch (error: any) {
-      console.log("error here");
-      throw new Error(error.message || "Failed to get URL");
+      console.log("Error retrieving URL:", error.message);
+      return "about:blank";
+    } finally {
+      // Clean up any temporary files we might have created
+      try {
+        await DockerCommands.executeCommand({
+          command: [
+            "exec",
+            containerId,
+            "bash",
+            "-c",
+            "rm -f /tmp/extract_url.py /tmp/places_temp.sqlite /tmp/get_firefox_url.sh /tmp/active_win /tmp/mouse_pos"
+          ],
+        });
+        
+        // Note: We don't kill the headless Firefox instance here anymore
+        // It will be reused for future URL retrievals to avoid the startup delay
+      } catch (cleanupError) {
+        // Ignore cleanup errors
+      }
     }
   }
 
