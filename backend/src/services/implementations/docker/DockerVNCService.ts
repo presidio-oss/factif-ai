@@ -113,84 +113,181 @@ export class DockerVNCService extends BaseStreamingService {
     }
   }
 
-  // New method to launch Firefox with a URL
+  // Launch Firefox with a URL - improved version with better error detection and recovery
   async launchFirefoxWithUrl(url: string): Promise<void> {
     if (!this.containerId) {
       throw new Error("Container is not initialized");
     }
 
+    // Set timeout for the entire Firefox launch operation
+    const FIREFOX_OPERATION_TIMEOUT = 12000; // 12 seconds timeout
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error("Firefox launch operation timed out")), FIREFOX_OPERATION_TIMEOUT)
+    );
+
     try {
       this.emitConsoleLog("info", `Launching Firefox with URL: ${url}`);
       
-      // Check if Firefox is already running
-      let firefoxRunning = false;
-      try {
-        const result = await DockerCommands.executeCommand({
-          command: ["exec", this.containerId, "pgrep", "-f", "firefox-esr"],
-        });
-        firefoxRunning = result.trim().length > 0;
-      } catch (e) {
-        // If pgrep fails, Firefox is likely not running
-        firefoxRunning = false;
-      }
-      
-      this.emitConsoleLog("info", `Firefox is ${firefoxRunning ? 'already running' : 'not running'}`);
+      // Enhanced Firefox detection using multiple methods
+      const isFirefoxRunning = await this.isFirefoxRunning();
+      this.emitConsoleLog("info", `Firefox detection result: ${isFirefoxRunning ? 'running' : 'not running'}`);
 
-      if (firefoxRunning) {
-        // If Firefox is already running, just navigate to the URL using xdotool
-        this.emitConsoleLog("info", "Navigating existing Firefox window to URL: " + url);
-        try {
-          // Activate Firefox window
+      // Create a promise that will handle the Firefox operation with proper timeout
+      const launchPromise = (async () => {
+        if (isFirefoxRunning) {
+          // If Firefox is already running, navigate to the URL using xdotool
+          this.emitConsoleLog("info", "Navigating existing Firefox window to URL: " + url);
+          try {
+            // Activate Firefox window with multiple attempts
+            let activationSuccess = false;
+            for (let attempt = 0; attempt < 3 && !activationSuccess; attempt++) {
+              try {
+                await DockerCommands.executeCommand({
+                  command: ["exec", this.containerId as string, "xdotool", "search", "--onlyvisible", "--class", "firefox", "windowactivate"],
+                });
+                activationSuccess = true;
+              } catch (e) {
+                this.emitConsoleLog("warn", `Firefox window activation attempt ${attempt+1}/3 failed, retrying...`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+            
+            if (!activationSuccess) {
+              throw new Error("Failed to activate Firefox window after multiple attempts");
+            }
+            
+            // Navigate to the URL by focusing address bar, typing new URL, and hitting enter
+            await DockerCommands.executeCommand({
+              command: ["exec", this.containerId as string, "xdotool", "key", "ctrl+l"],
+            });
+            await new Promise(resolve => setTimeout(resolve, 800));
+            
+            await DockerCommands.executeCommand({
+              command: ["exec", this.containerId as string, "xdotool", "type", url],
+            });
+            await new Promise(resolve => setTimeout(resolve, 800));
+            
+            await DockerCommands.executeCommand({
+              command: ["exec", this.containerId as string, "xdotool", "key", "Return"],
+            });
+            
+            this.emitConsoleLog("info", `Navigated existing Firefox to URL: ${url}`);
+          } catch (error: any) {
+            this.emitConsoleLog("warn", "Error navigating Firefox: " + error.message);
+            
+            // As a fallback, try launching a new window
+            this.emitConsoleLog("info", "Attempting to open a new Firefox window instead");
+            await DockerCommands.executeCommand({
+              command: ["exec", this.containerId as string, "bash", "-c", `firefox-esr --new-window "${url}"`],
+              successMessage: `Launched Firefox with URL: ${url}`,
+              errorMessage: `Failed to launch Firefox with URL: ${url}`,
+            });
+          }
+        } else {
+          // Launch Firefox with the specified URL if it's not running
+          this.emitConsoleLog("info", "Starting new Firefox instance with URL: " + url);
           await DockerCommands.executeCommand({
-            command: ["exec", this.containerId, "xdotool", "search", "--onlyvisible", "--class", "firefox", "windowactivate"],
-          });
-          
-          // Navigate to the URL by focusing address bar, typing new URL, and hitting enter
-          await DockerCommands.executeCommand({
-            command: ["exec", this.containerId, "xdotool", "key", "ctrl+l"],
-          });
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          await DockerCommands.executeCommand({
-            command: ["exec", this.containerId, "xdotool", "type", url],
-          });
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          await DockerCommands.executeCommand({
-            command: ["exec", this.containerId, "xdotool", "key", "Return"],
-          });
-          
-          this.emitConsoleLog("info", `Navigated existing Firefox to URL: ${url}`);
-        } catch (error: any) {
-          this.emitConsoleLog("warn", "Error navigating Firefox: " + error.message);
-          
-          // As a fallback, try launching a new window
-          this.emitConsoleLog("info", "Attempting to open a new Firefox window instead");
-          await DockerCommands.executeCommand({
-            command: ["exec", this.containerId, "bash", "-c", `firefox-esr --new-window "${url}"`],
+            command: ["exec", this.containerId as string, "bash", "-c", `firefox-esr --new-window "${url}"`],
             successMessage: `Launched Firefox with URL: ${url}`,
             errorMessage: `Failed to launch Firefox with URL: ${url}`,
           });
         }
-      } else {
-        // Launch Firefox with the specified URL if it's not running
-        await DockerCommands.executeCommand({
-          command: ["exec", this.containerId, "bash", "-c", `firefox-esr --new-window "${url}"`],
-          successMessage: `Launched Firefox with URL: ${url}`,
-          errorMessage: `Failed to launch Firefox with URL: ${url}`,
-        });
-      }
 
-      // Allow time for Firefox to load
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+        // Wait for Firefox to load and verify it's running
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Verify Firefox is actually running after our attempt
+        const firefoxRunningAfter = await this.isFirefoxRunning();
+        if (!firefoxRunningAfter) {
+          throw new Error("Firefox failed to launch - process not detected after launch attempt");
+        }
+        
+        this.emitConsoleLog("info", "Firefox launch verification successful");
+      })();
+
+      // Race the operation against the timeout
+      await Promise.race([launchPromise, timeoutPromise]);
       
       this.emitConsoleLog("info", "Firefox launched successfully");
     } catch (error: any) {
-      this.emitConsoleLog(
-        "error",
-        `Failed to launch Firefox: ${error.message || "Unknown error"}`
-      );
+      const errorMessage = error.message || "Unknown error";
+      this.emitConsoleLog("error", `Failed to launch Firefox: ${errorMessage}`);
+      
+      // Notify the client about the failure so UI doesn't remain in "executing action" state
+      this.io.sockets.emit("browser-action-error", {
+        message: `Failed to launch Firefox: ${errorMessage}`,
+        action: "launch",
+        url: url
+      });
+      
       throw error;
+    }
+  }
+
+  // Helper method to check if Firefox is running using multiple detection methods
+  private async isFirefoxRunning(): Promise<boolean> {
+    if (!this.containerId) {
+      return false;
+    }
+
+    try {
+      // Method 1: Check for Firefox process using pgrep with multiple variants
+      let firefoxProcessFound = false;
+      try {
+        // Try different process names that Firefox might use
+        const processNames = ["firefox-esr", "firefox", "Mozilla"];
+        for (const name of processNames) {
+          try {
+            const result = await DockerCommands.executeCommand({
+              command: ["exec", this.containerId as string, "pgrep", "-f", name],
+            });
+            if (result.trim().length > 0) {
+              this.emitConsoleLog("info", `Firefox process found with name: ${name}`);
+              firefoxProcessFound = true;
+              break;
+            }
+          } catch (e) {
+            // Continue to next process name
+          }
+        }
+      } catch (e) {
+        this.emitConsoleLog("warn", "Process detection method failed");
+      }
+
+      if (firefoxProcessFound) {
+        return true;
+      }
+
+      // Method 2: Check for Firefox window using xdotool
+      try {
+        const windowCheckResult = await DockerCommands.executeCommand({
+          command: ["exec", this.containerId as string, "bash", "-c", "xdotool search --onlyvisible --class firefox || echo ''"],
+        });
+        if (windowCheckResult.trim().length > 0) {
+          this.emitConsoleLog("info", "Firefox window detected via xdotool");
+          return true;
+        }
+      } catch (e) {
+        this.emitConsoleLog("warn", "Window detection method failed");
+      }
+
+      // Method 3: Check via ps command which might be more reliable
+      try {
+        const psResult = await DockerCommands.executeCommand({
+          command: ["exec", this.containerId as string, "bash", "-c", "ps aux | grep -i firefox | grep -v grep || echo ''"],
+        });
+        if (psResult.trim().length > 0) {
+          this.emitConsoleLog("info", "Firefox detected via ps command");
+          return true;
+        }
+      } catch (e) {
+        this.emitConsoleLog("warn", "PS command detection method failed");
+      }
+
+      return false;
+    } catch (error: any) {
+      this.emitConsoleLog("warn", `Error in Firefox detection: ${error.message}`);
+      return false; // Assume Firefox is not running if detection fails
     }
   }
 
@@ -251,7 +348,7 @@ export class DockerVNCService extends BaseStreamingService {
     if (!this.containerId) return;
 
     const docker = DockerCommands.executeCommand({
-      command: ["exec", this.containerId, "tail", "-f", logPath],
+      command: ["exec", this.containerId as string, "tail", "-f", logPath],
     })
       .then((output) => {
         const logs = output.split("\n");
@@ -290,7 +387,7 @@ export class DockerVNCService extends BaseStreamingService {
     const screenshotPath = `/tmp/screenshot_${screenshotId}.png`;
 
     try {
-      return DockerCommands.takeScreenshot(this.containerId, screenshotPath);
+      return DockerCommands.takeScreenshot(this.containerId as string, screenshotPath);
     } catch (error: any) {
       this.emitConsoleLog(
         "error",
@@ -364,7 +461,7 @@ export class DockerVNCService extends BaseStreamingService {
     try {
       this.emitConsoleLog("info", `Performing VNC action: ${action.action}`);
       return await DockerActions.performAction(
-        this.containerId,
+        this.containerId as string,
         action,
         params
       );
@@ -388,7 +485,7 @@ export class DockerVNCService extends BaseStreamingService {
         screenshot: "",
       };
     }
-    return await DockerActions.getUrl(this.containerId);
+    return await DockerActions.getUrl(this.containerId as string);
   }
 
   async cleanup(): Promise<void> {

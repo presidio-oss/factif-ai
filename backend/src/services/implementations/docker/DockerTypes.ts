@@ -18,6 +18,7 @@ export interface VNCActionParams {
   text?: string;
   key?: string;
   direction?: 'up' | 'down';
+  url?: string;  // Added URL parameter for launch action and error handling
 }
 
 export interface LogStreams {

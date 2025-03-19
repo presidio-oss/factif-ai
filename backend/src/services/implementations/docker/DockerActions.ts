@@ -280,6 +280,32 @@ export class DockerActions {
     params: VNCActionParams,
   ): Promise<ActionResponse> {
     try {
+      // Validate that Firefox is actually running before attempting actions
+      if (action.action !== "launch") {
+        try {
+          // Quick check if Firefox is running using ps command
+          const checkResult = await DockerCommands.executeCommand({
+            command: ["exec", containerId, "bash", "-c", "ps aux | grep -i firefox | grep -v grep || echo ''"],
+          });
+          
+          if (!checkResult.trim()) {
+            const errorMessage = "Firefox not running - cannot perform action";
+            DockerActions.io.sockets.emit("browser-action-error", {
+              message: errorMessage,
+              action: action.action,
+              url: params.url
+            });
+            return {
+              status: "error",
+              message: errorMessage,
+              screenshot: "",
+            };
+          }
+        } catch (checkError) {
+          // Continue even if check fails - we'll handle it in the main action
+        }
+      }
+      
       let result: ActionResponse;
       switch (action.action) {
         case "click":
@@ -365,12 +391,22 @@ export class DockerActions {
             screenshot: "",
           };
       }
+      // If we get here, the action was successful
       DockerActions.io.sockets.emit("action_performed");
       return result;
     } catch (error: any) {
+      const errorMessage = error.message || `Action Result: Action ${action.action} failed`;
+      
+      // Emit the error event so frontend can update UI
+      DockerActions.io.sockets.emit("browser-action-error", {
+        message: errorMessage,
+        action: action.action,
+        url: params.url
+      });
+      
       return {
         status: "error",
-        message: error.message || `Action Result: Action ${action} failed`,
+        message: errorMessage,
         screenshot: "",
       };
     }
