@@ -277,25 +277,40 @@ export const useExploreChat = () => {
     }
   };
 
+  // Helper function to process image data consistently
+  const processImageData = (imageData?: string | IProcessedScreenshot): string | undefined => {
+    if (!imageData) return undefined;
+    
+    try {
+      if (typeof imageData === "string") {
+        // If it's already a string with data URI prefix, return as is
+        return imageData.startsWith("data:") 
+          ? imageData 
+          : `data:image/png;base64,${imageData}`;
+      } else if (typeof imageData === "object") {
+        // Handle screenshot object format
+        if (imageData.image) {
+          const imgStr = imageData.image;
+          return imgStr.startsWith("data:") 
+            ? imgStr 
+            : `data:image/png;base64,${imgStr}`;
+        }
+      }
+    } catch (error) {
+      console.error("Error processing image data:", error);
+    }
+    
+    return undefined;
+  };
+
   const createConstructNode = (
     currentNodeId: string,
     data: { label: string; imageData?: string | IProcessedScreenshot },
   ) => {
     const currentNodelCount = exploreGraphData.current.nodes.length;
 
-    // Process image data based on type
-    let processedImageData;
-    if (data.imageData) {
-      if (typeof data.imageData === "string") {
-        // If it's already a string, make sure it has the data URI prefix
-        processedImageData = data.imageData.startsWith("data:")
-          ? data.imageData
-          : `data:image/png;base64,${data.imageData}`;
-      } else if (typeof data.imageData === "object" && data.imageData.image) {
-        // If it's a screenshot object, extract the base64 image
-        processedImageData = `${data.imageData.image}`;
-      }
-    }
+    // Process image data consistently using helper function
+    const processedImageData = processImageData(data.imageData);
 
     exploreGraphData.current.nodes.push({
       id: currentNodeId,
@@ -316,6 +331,45 @@ export const useExploreChat = () => {
       console.error("Failed to save graph data to localStorage:", error);
       // App can continue functioning even if storage fails
     }
+  };
+
+  // Function to update existing node with image data
+  const updateNodeWithImageData = (
+    nodeId: string,
+    imageData?: string | IProcessedScreenshot
+  ): boolean => {
+    if (!imageData || !nodeId) return false;
+    
+    const processedImageData = processImageData(imageData);
+    if (!processedImageData) return false;
+    
+    let updated = false;
+    
+    exploreGraphData.current.nodes = exploreGraphData.current.nodes.map(node => {
+      if (node.id === nodeId && (!node.data.imageData || node.data.imageData === '')) {
+        console.log(`Updating node ${nodeId} with image data`);
+        updated = true;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            imageData: processedImageData
+          }
+        };
+      }
+      return node;
+    });
+    
+    if (updated) {
+      setGraphData(exploreGraphData.current);
+      try {
+        localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
+      } catch (error) {
+        console.error("Failed to save graph data to localStorage:", error);
+      }
+    }
+    
+    return updated;
   };
 
   const createEdge = (
@@ -433,38 +487,15 @@ export const useExploreChat = () => {
       if (isFirstNode) {
         console.log("After creating first node, graph state:", JSON.stringify(exploreGraphData.current));
       }
-    } else if (
-      isFirstNode &&
-      !canCreateNode.node?.data.imageData &&
-      imageData
-    ) {
-      // Special case: If we're not creating a new node because it already exists,
-      // but it's the first node and doesn't have image data, update it with the image
-      console.log("Updating first node with missing image data");
-      exploreGraphData.current.nodes = exploreGraphData.current.nodes.map(
-        (node) => {
-          if (node.id === nodeId) {
-            let processedImageData;
-            if (typeof imageData === "string") {
-              processedImageData = imageData.startsWith("data:")
-                ? imageData
-                : `data:image/png;base64,${imageData}`;
-            } else if (typeof imageData === "object" && imageData.image) {
-              processedImageData = `data:image/png;base64,${imageData.image}`;
-            }
-
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                imageData: processedImageData,
-              },
-            };
-          }
-          return node;
-        },
-      );
-      setGraphData(exploreGraphData.current);
+    } else if (imageData) {
+      // Always attempt to update any existing node with new image data if provided
+      // This is the key improvement - not just for the first node, but for any node missing an image
+      const existingNode = exploreGraphData.current.nodes.find(n => n.id === nodeId);
+      
+      if (existingNode && (!existingNode.data.imageData || existingNode.data.imageData === '')) {
+        console.log(`Updating node ${nodeId} for URL ${url} with image data`);
+        updateNodeWithImageData(nodeId, imageData);
+      }
     }
 
     if (currentlyExploring.current) {
@@ -583,45 +614,76 @@ export const useExploreChat = () => {
     );
 
     if (processedExploreMessage.length > 0) {
-      const url = await getCurrentUrl(streamingSource);
+      try {
+        const url = await getCurrentUrl(streamingSource);
+        
+        if (!url) return;
 
-      if (!url) return;
+        // If we have new image data, try to update any existing node for this URL first
+        if (imageData) {
+          const existingNode = exploreGraphData.current.nodes.find(
+            node => node.data.label === url
+          );
+          
+          if (existingNode && (!existingNode.data.imageData || existingNode.data.imageData === '')) {
+            console.log(`Updating node for ${url} with screenshot in processExploreOutput`);
+            updateNodeWithImageData(existingNode.id, imageData);
+          }
+        }
 
-      // Always process the elements for the current URL, whether we've seen it before or not
-      // This ensures we don't miss any clickable elements on pages we revisit
-      if (!exploreQueue.current[url]) {
-        exploreQueue.current[url] = [];
-      }
+        // Always process the elements for the current URL, whether we've seen it before or not
+        // This ensures we don't miss any clickable elements on pages we revisit
+        if (!exploreQueue.current[url]) {
+          exploreQueue.current[url] = [];
+        }
 
-      // Only add to routeSet if it's a new URL
-      if (!routeSet.has(url as string)) {
-        routeSet.add(url as string);
-        const nodeId = handleEdgeAndNodeCreation(url, imageData);
-        handleQueueUpdate(
-          processedExploreMessage,
-          fullResponse,
-          url,
-          nodeId,
-          parent,
-          imageData,
-        );
-      } else if (exploreQueue.current[url].length === 0) {
-        // If we've seen this URL before but its queue is empty, update with new elements
-        const existingNode = exploreGraphData.current.nodes.find(
-          (node) => node.data.label === url,
-        );
-
-        if (existingNode) {
+        // Only add to routeSet if it's a new URL
+        if (!routeSet.has(url as string)) {
+          routeSet.add(url as string);
+          const nodeId = handleEdgeAndNodeCreation(url, imageData);
           handleQueueUpdate(
             processedExploreMessage,
             fullResponse,
             url,
-            existingNode.id,
+            nodeId,
             parent,
             imageData,
           );
-          console.log(`Updated elements for existing route: ${url}`);
+        } else if (exploreQueue.current[url].length === 0) {
+          // If we've seen this URL before but its queue is empty, update with new elements
+          const existingNode = exploreGraphData.current.nodes.find(
+            (node) => node.data.label === url,
+          );
+
+          if (existingNode) {
+            // Always attempt to update the node with new image data
+            if (imageData && (!existingNode.data.imageData || existingNode.data.imageData === '')) {
+              updateNodeWithImageData(existingNode.id, imageData);
+            }
+            
+            handleQueueUpdate(
+              processedExploreMessage,
+              fullResponse,
+              url,
+              existingNode.id,
+              parent,
+              imageData,
+            );
+            console.log(`Updated elements for existing route: ${url}`);
+          }
+        } else {
+          // If we've seen this URL and its queue is not empty, still check if we can update screenshot
+          const existingNode = exploreGraphData.current.nodes.find(
+            (node) => node.data.label === url
+          );
+          
+          if (existingNode && imageData && (!existingNode.data.imageData || existingNode.data.imageData === '')) {
+            console.log(`Updating node with screenshot for URL with active queue: ${url}`);
+            updateNodeWithImageData(existingNode.id, imageData);
+          }
         }
+      } catch (error) {
+        console.error("Error in processExploreOutput:", error);
       }
     }
 
@@ -682,62 +744,106 @@ export const useExploreChat = () => {
     hasPartialMessage.current = false;
     updateLastMessage((msg) => ({ ...msg, isPartial: false }));
 
-    const processedResponse = await MessageProcessor.processMessage(
-      fullResponse,
-      streamingSource,
-    );
-
-    const exploredOutput = await processExploreOutput(
-      fullResponse,
-      currentlyExploring.current,
-      streamingSource,
-      imageData,
-    );
-
-    if (
-      processedResponse.actionResult ||
-      fullResponse.includes("<complete_task>")
-    ) {
-      if (processedResponse.omniParserResult) {
-        setLatestOmniParserResult(processedResponse.omniParserResult);
+    try {
+      // If we have new image data from this message completion, try to find the current URL and update its node
+      if (imageData) {
+        try {
+          const currentUrl = await getCurrentUrl(streamingSource);
+          if (currentUrl) {
+            console.log(`Got screenshot for current URL: ${currentUrl}`);
+            
+            // Find if a node exists for this URL
+            const existingNode = exploreGraphData.current.nodes.find(
+              node => node.data.label === currentUrl
+            );
+            
+            if (existingNode) {
+              // Update the node with the new image data if it doesn't have an image yet
+              if (!existingNode.data.imageData || existingNode.data.imageData === '') {
+                console.log(`Updating node for ${currentUrl} with newly received screenshot`);
+                updateNodeWithImageData(existingNode.id, imageData);
+              }
+            }
+            
+            // If we're currently exploring a node, also update that one (might be different than current URL)
+            if (currentlyExploring.current && currentlyExploring.current.nodeId) {
+              const exploringNode = exploreGraphData.current.nodes.find(
+                node => node.id === currentlyExploring.current?.nodeId
+              );
+              
+              if (exploringNode && (!exploringNode.data.imageData || exploringNode.data.imageData === '')) {
+                console.log(`Updating currently exploring node with screenshot`);
+                updateNodeWithImageData(currentlyExploring.current.nodeId, imageData);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error updating node with screenshot:", error);
+        }
       }
 
-      updateLastMessage((msg) => ({
-        ...msg,
-        isPartial: false,
-        isHistory: true,
-      }));
-
-      processedResponse.actionResult &&
-        addMessage({
-          text: processedResponse.actionResult,
-          timestamp: new Date(),
-          isUser: false,
-          isHistory: false,
-        });
-
-      isProcessing.current = false;
-
-      if (fullResponse.includes("<complete_task>")) {
-        setType("explore");
-      }
-
-      await handleExploreMessage(
-        processedResponse.actionResult
-          ? processedResponse.actionResult
-          : processedResponse.text,
-        fullResponse.includes("<complete_task>") ? "explore" : "action",
-        imageData,
-        processedResponse.omniParserResult,
+      const processedResponse = await MessageProcessor.processMessage(
+        fullResponse,
+        streamingSource,
       );
-    } else if (exploredOutput) {
-      await onGettingExploredMode(imageData);
-    } else {
-      updateLastMessage((msg) => ({
-        ...msg,
-        isPartial: false,
-        isHistory: true,
-      }));
+
+      const exploredOutput = await processExploreOutput(
+        fullResponse,
+        currentlyExploring.current,
+        streamingSource,
+        imageData,
+      );
+
+      if (
+        processedResponse.actionResult ||
+        fullResponse.includes("<complete_task>")
+      ) {
+        if (processedResponse.omniParserResult) {
+          setLatestOmniParserResult(processedResponse.omniParserResult);
+        }
+
+        updateLastMessage((msg) => ({
+          ...msg,
+          isPartial: false,
+          isHistory: true,
+        }));
+
+        processedResponse.actionResult &&
+          addMessage({
+            text: processedResponse.actionResult,
+            timestamp: new Date(),
+            isUser: false,
+            isHistory: false,
+          });
+
+        isProcessing.current = false;
+
+        if (fullResponse.includes("<complete_task>")) {
+          setType("explore");
+        }
+
+        await handleExploreMessage(
+          processedResponse.actionResult
+            ? processedResponse.actionResult
+            : processedResponse.text,
+          fullResponse.includes("<complete_task>") ? "explore" : "action",
+          imageData,
+          processedResponse.omniParserResult,
+        );
+      } else if (exploredOutput) {
+        await onGettingExploredMode(imageData);
+      } else {
+        updateLastMessage((msg) => ({
+          ...msg,
+          isPartial: false,
+          isHistory: true,
+        }));
+        setIsChatStreaming(false);
+        activeMessageId.current = null;
+        isProcessing.current = false;
+      }
+    } catch (error) {
+      console.error("Error in handleMessageCompletion:", error);
       setIsChatStreaming(false);
       activeMessageId.current = null;
       isProcessing.current = false;
@@ -754,11 +860,24 @@ export const useExploreChat = () => {
     if (nextElementToVisit) {
       setType("action");
 
-      // Use the element's saved screenshot if available, otherwise use the current page screenshot
-      // This ensures we document the state of the page when the element was found
-      const elementScreenshot =
-        nextElementToVisit.screenshot ||
-        (typeof imageData === "string" ? imageData : imageData?.image);
+      // Try to find the node for this URL to ensure its screenshot is updated
+      const nodeForThisUrl = exploreGraphData.current.nodes.find(
+        node => node.data.label === nextElementToVisit.url
+      );
+
+      // Update node with image data if available and node exists
+      if (nodeForThisUrl && imageData && (!nodeForThisUrl.data.imageData || nodeForThisUrl.data.imageData === '')) {
+        console.log(`Updating node ${nodeForThisUrl.id} with screenshot before navigation`);
+        updateNodeWithImageData(nodeForThisUrl.id, imageData);
+      }
+
+      // Select the best screenshot to use - prioritize in this order:
+      // 1. Element's saved screenshot (most relevant)
+      // 2. Current page's screenshot
+      // 3. Processed version of either
+      const elementScreenshot = nextElementToVisit.screenshot
+        ? processImageData(nextElementToVisit.screenshot)
+        : processImageData(imageData);
 
       // Include a direct instruction to take a screenshot after navigation
       const message = `In ${nextElementToVisit.url} \n Visit ${nextElementToVisit.text} on coordinate : ${nextElementToVisit.coordinates} with about this element : ${nextElementToVisit.aboutThisElement}. After clicking on this element you MUST take a screenshot by performing a click action. This screenshot is important for complete documentation of this feature.`;
