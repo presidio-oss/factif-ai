@@ -24,7 +24,7 @@ export const ChatMessages = ({
           isPartial={msg.isPartial}
         />
       ))}
-      {isChatStreaming && (
+      {(isChatStreaming || hasActiveAction) && (
         <div className="flex justify-start">
           <ThinkingAnimation hasActiveAction={hasActiveAction}/>
         </div>
