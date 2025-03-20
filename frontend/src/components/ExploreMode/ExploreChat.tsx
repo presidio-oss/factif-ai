@@ -292,9 +292,15 @@ export const ExploreChat = () => {
 export const ExploreModeSuggestions: Suggestion[] = [
   {
     type: "explore",
-    title: "Explore Wikipedia",
-    description: "Explore all the features and links on wikipedia.org",
-    prompt: "Explore https://wikipedia.org and document the features and links",
+    title: "Explore HandBrake",
+    description: "Explore all the features and links on handbrake.fr",
+    prompt: "Explore https://handbrake.fr/ and document the features and links",
+  },
+  {
+    type: "explore",
+    title: "Explore Tumblr",
+    description: "Explore all the features and links on tumblr.com",
+    prompt: "Explore https://www.tumblr.com/ and document the features and links",
   },
   {
     type: "explore",
