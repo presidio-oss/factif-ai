@@ -18,6 +18,8 @@ export interface PerformAction {
   coordinate?: string;
   text?: string;
   key?: string;
+  aboutThisAction?: string;
+  markerNumber?: string;
 }
 
 export interface ActionResult {

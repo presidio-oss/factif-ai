@@ -13,8 +13,18 @@ export class MessagePatterns {
       /<ask_followup_question>[\s\n]*<question>[\s\n]*(.*?)[\s\n]*<\/question>[\s\n]*<\/ask_followup_question>/s,
     completeTask:
       /<complete_task>[\s\n]*<result>([\s\S]*?)<\/result>(?:[\s\n]*<command>(.*?)<\/command>)?[\s\n]*<\/complete_task>/s,
-    performAction:
-      /<perform_action>[\s\S]*?<action>(.*?)<\/action>(?:[\s\S]*?<url>(.*?)<\/url>)?(?:[\s\S]*?<coordinate>(.*?)<\/coordinate>)?(?:[\s\S]*?<text>(.*?)<\/text>)?(?:[\s\S]*?<key>(.*?)<\/key>)?(?:[\s\S]*?<about_this_action>(.*?)<\/about_this_action>)?(?:[\s\S]*?<marker_number>(.*?)<\/marker_number>)?[\s\S]*?<\/perform_action>/s,
+    // Individual patterns for each tag in perform_action - ensures all characters are properly preserved
+    performActionTags: {
+      action: /<action>([\s\S]*?)<\/action>/s,
+      url: /<url>([\s\S]*?)<\/url>/s,
+      coordinate: /<coordinate>([\s\S]*?)<\/coordinate>/s,
+      text: /<text>([\s\S]*?)<\/text>/s,
+      key: /<key>([\s\S]*?)<\/key>/s,
+      aboutThisAction: /<about_this_action>([\s\S]*?)<\/about_this_action>/s,
+      markerNumber: /<marker_number>([\s\S]*?)<\/marker_number>/s,
+    },
+    // Main pattern just to identify a perform_action block
+    performAction: /<perform_action>[\s\S]*?<\/perform_action>/s,
     actionResult:
       /<perform_action_result>[\s\S]*?<action_status>(success|error)<\/action_status>[\s\S]*?<action_message>(.*?)<\/action_message>(?:[\s\S]*?<screenshot>(.*?)<\/screenshot>)?(?:[\s\S]*?<omni_parser>(.*?)<\/omni_parser>)?[\s\S]*?<\/perform_action_result>/s,
     exploreOutput:
@@ -134,22 +144,48 @@ export class MessagePatterns {
   private static performActionMatch(
     fullMatch: string,
   ): IProcessedMessagePart | null {
-    const actionMatch = fullMatch.match(this.patterns.performAction);
-    let match = null;
-    if (actionMatch) {
-      match = {
-        length: fullMatch.length,
-        part: {
-          type: "perform_action",
-          action: actionMatch[1],
-          ...(actionMatch[2] && { url: actionMatch[2] }),
-          ...(actionMatch[3] && { coordinate: actionMatch[3] }),
-          ...(actionMatch[4] && { text: actionMatch[4] }),
-          ...(actionMatch[5] && { key: actionMatch[5] }),
-        } as PerformAction,
-      };
+    // Check if we have a valid perform_action block
+    if (!fullMatch.match(this.patterns.performAction)) {
+      return null;
     }
-    return match;
+    
+    // Extract each tag independently using the individual patterns
+    // and make sure to trim whitespace but preserve internal characters
+    const actionMatch = fullMatch.match(this.patterns.performActionTags.action);
+    const urlMatch = fullMatch.match(this.patterns.performActionTags.url);
+    const coordinateMatch = fullMatch.match(this.patterns.performActionTags.coordinate);
+    const textMatch = fullMatch.match(this.patterns.performActionTags.text);
+    const keyMatch = fullMatch.match(this.patterns.performActionTags.key);
+    const aboutThisActionMatch = fullMatch.match(this.patterns.performActionTags.aboutThisAction);
+    const markerNumberMatch = fullMatch.match(this.patterns.performActionTags.markerNumber);
+    
+    // Process matched values to preserve all characters (especially commas)
+    const action = actionMatch?.[1]?.trim();
+    const url = urlMatch?.[1]?.trim();
+    const coordinate = coordinateMatch?.[1]?.trim();
+    const text = textMatch?.[1]?.trim();
+    const key = keyMatch?.[1]?.trim();
+    const aboutThisAction = aboutThisActionMatch?.[1]?.trim();
+    const markerNumber = markerNumberMatch?.[1]?.trim();
+    
+    // Action is required, return null if it's not present
+    if (!action) {
+      return null;
+    }
+    
+    return {
+      length: fullMatch.length,
+      part: {
+        type: "perform_action",
+        action,
+        ...(url && { url }),
+        ...(coordinate && { coordinate }),
+        ...(text && { text }),
+        ...(key && { key }),
+        ...(aboutThisAction && { aboutThisAction }),
+        ...(markerNumber && { markerNumber }),
+      } as PerformAction,
+    };
   }
 
   private static performActionResultMatch(
@@ -208,16 +244,42 @@ export class MessagePatterns {
   }
 
   static extractAction(text: string): PerformAction | null {
-    const match = text.match(this.patterns.performAction);
-    if (!match) return null;
-
+    // Check if the text contains a perform_action block
+    const fullMatch = text.match(this.patterns.performAction);
+    if (!fullMatch) return null;
+    
+    const fullText = fullMatch[0];
+    
+    // Extract each tag independently - using same approach as performActionMatch
+    const actionMatch = fullText.match(this.patterns.performActionTags.action);
+    const urlMatch = fullText.match(this.patterns.performActionTags.url);
+    const coordinateMatch = fullText.match(this.patterns.performActionTags.coordinate);
+    const textMatch = fullText.match(this.patterns.performActionTags.text);
+    const keyMatch = fullText.match(this.patterns.performActionTags.key);
+    const aboutThisActionMatch = fullText.match(this.patterns.performActionTags.aboutThisAction);
+    const markerNumberMatch = fullText.match(this.patterns.performActionTags.markerNumber);
+    
+    // Process matched values to preserve all characters
+    const action = actionMatch?.[1]?.trim();
+    const url = urlMatch?.[1]?.trim();
+    const coordinate = coordinateMatch?.[1]?.trim();
+    const text_content = textMatch?.[1]?.trim();
+    const key = keyMatch?.[1]?.trim();
+    const aboutThisAction = aboutThisActionMatch?.[1]?.trim();
+    const markerNumber = markerNumberMatch?.[1]?.trim();
+    
+    // Action is required
+    if (!action) return null;
+    
     return {
       type: "perform_action",
-      action: match[1],
-      ...(match[2] && { url: match[2] }),
-      ...(match[3] && { coordinate: match[3] }),
-      ...(match[4] && { text: match[4] }),
-      ...(match[5] && { key: match[5] }),
+      action,
+      ...(url && { url }),
+      ...(coordinate && { coordinate }),
+      ...(text_content && { text: text_content }),
+      ...(key && { key }),
+      ...(aboutThisAction && { aboutThisAction }),
+      ...(markerNumber && { markerNumber }),
     };
   }
 
