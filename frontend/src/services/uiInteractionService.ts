@@ -158,6 +158,26 @@ export class UIInteractionService {
       this.browserStarted = false;
       this.pendingStreamStart = false;
     });
+    
+    // Handle specific browser action errors (especially for Docker VNC Firefox issues)
+    socket.on("browser-action-error", ({ message, action, url }: { message: string, action: string, url?: string }) => {
+      this.consoleService.emitConsoleEvent("error", `Browser action error: ${message}`);
+      onStatusUpdate("Action Failed");
+      onError(`Action '${action}' failed: ${message}`);
+      
+      // Clear any waiting action resolvers to prevent UI from staying in loading state
+      if (this.actionPerformedResolve) {
+        this.actionPerformedResolve();
+        this.actionPerformedResolve = null;
+      }
+      
+      // If this was a launch error, update browser state
+      if (action === "launch") {
+        this.pendingStreamStart = false;
+        // Don't set browserStarted to false if it was already running,
+        // as we might just have failed to navigate to a new URL
+      }
+    });
 
     socket.on("browser-stopped", () => {
       onStatusUpdate("Browser stopped");
@@ -180,6 +200,8 @@ export class UIInteractionService {
         this.actionPerformedResolve();
         this.actionPerformedResolve = null;
       }
+      // Clear any error when an action completes successfully
+      onError(null);
     });
   }
 
@@ -390,15 +412,24 @@ export class UIInteractionService {
         }
       };
 
-      // This handler is used to clear the timeout and resolve the promise when the action is performed.
-      // It also removes itself to prevent memory leaks and unexpected behavior.
+      // These handlers are used to clear the timeout and resolve/reject the promise when the action completes or fails.
+      // They also remove themselves to prevent memory leaks and unexpected behavior.
       const actionPerformedHandler = () => {
         clearTimeoutAndResolve();
         this.consoleService.emitConsoleEvent("info", `Action performed`);
         socket.off("action_performed", actionPerformedHandler);
+        socket.off("browser-action-error", actionErrorHandler);
+      };
+      
+      const actionErrorHandler = ({message, action: actionType}: {message: string, action: string}) => {
+        this.consoleService.emitConsoleEvent("error", `Action error: ${message}`);
+        clearTimeoutAndReject(new Error(`Action error: ${message}`));
+        socket.off("action_performed", actionPerformedHandler);
+        socket.off("browser-action-error", actionErrorHandler);
       };
 
       socket.on("action_performed", actionPerformedHandler);
+      socket.on("browser-action-error", actionErrorHandler);
       switch (action.toLowerCase()) {
         case "click":
           if (coordinate) {
