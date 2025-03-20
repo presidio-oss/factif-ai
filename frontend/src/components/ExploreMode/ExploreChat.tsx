@@ -298,9 +298,9 @@ export const ExploreModeSuggestions: Suggestion[] = [
   },
   {
     type: "explore",
-    title: "Explore Ecommerce Site",
-    description: "Explore all the features and links on saucedemo.com",
+    title: "Explore Zig Programming Language",
+    description: "Explore all the features and links on ziglang.org",
     prompt:
-      "Explore https://www.saucedemo.com/ and document the features and links",
+      "Explore https://ziglang.org/ and document the features and links",
   },
 ];

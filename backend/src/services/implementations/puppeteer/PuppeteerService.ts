@@ -96,7 +96,7 @@ export class PuppeteerService extends BaseStreamingService {
     params?: any
   ): Promise<ActionResponse> {
     try {
-      this.emitConsoleLog("info", `Performing browser action: ${action}`);
+      this.emitConsoleLog("info", `Performing browser action: ${action.action}`);
       if (!PuppeteerService.page)
         return {
           status: "error",
