@@ -159,6 +159,12 @@ export class PuppeteerService extends BaseStreamingService {
         case "back":
           return await PuppeteerActions.back(PuppeteerService.page);
           
+        case "detectLoading":
+          return await PuppeteerActions.detectLoading(PuppeteerService.page, action);
+          
+        case "submit":
+          return await PuppeteerActions.submitForm(PuppeteerService.page, action);
+          
         default:
           this.emitConsoleLog("error", `Unsupported action type: ${action.action}`);
           return {

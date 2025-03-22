@@ -8,6 +8,8 @@ export class PuppeteerActions {
   private static io: SocketServer;
   private static puppeteerService: PuppeteerService;
   private static lastHoverPosition: {x: number, y: number} | null = null;
+  private static isMonitoringLoading: boolean = false;
+  private static loadingMonitorInterval: NodeJS.Timeout | null = null;
 
   static initialize(io: SocketServer, puppeteerService: PuppeteerService) {
     PuppeteerActions.io = io;
@@ -430,5 +432,395 @@ export class PuppeteerActions {
 
   static async getCurrentUrl() {
     return await PuppeteerActions.puppeteerService.getCurrentUrl();
+  }
+  
+  /**
+   * Detects loading indicators on the page and monitors their state
+   * @param page Playwright Page instance
+   * @param action Action request containing selector options
+   * @returns ActionResponse with status and message
+   */
+  static async detectLoading(page: Page, action: ActionRequest | { action: string; params?: Record<string, any> }): Promise<ActionResponse> {
+    try {
+      const selectors = action.params?.selectors || [
+        '.loading', 
+        '.spinner', 
+        'progress',
+        '.progress',
+        '.loader',
+        '[role="progressbar"]'
+      ];
+      
+      // Check if any loading indicators are present
+      const loadingState = await page.evaluate((selectors) => {
+        // Helper function to check if an element or any of its children are visible
+        const isElementVisible = (element: Element | null) => {
+          if (!element) return false;
+          
+          const style = window.getComputedStyle(element);
+          if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+            return false;
+          }
+          
+          const rect = element.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) {
+            return false;
+          }
+          
+          return true;
+        };
+      
+        // Find all loading indicators in the document
+        let loadingElements = [];
+        let isLoading = false;
+        let progressValue = null;
+        
+        // Check each selector
+        for (const selector of selectors) {
+          try {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach((el: Element) => {
+              if (isElementVisible(el)) {
+                isLoading = true;
+                loadingElements.push({
+                  selector,
+                  text: el.textContent?.trim() || ''
+                });
+                
+                // Try to get progress value if available
+                if (el.tagName === 'PROGRESS' && el.hasAttribute('value')) {
+                  const value = parseFloat(el.getAttribute('value') || '0');
+                  const max = parseFloat(el.getAttribute('max') || '100');
+                  progressValue = Math.round((value / max) * 100);
+                }
+                // Check for aria-valuenow for role="progressbar"
+                else if (el.getAttribute('role') === 'progressbar' && el.hasAttribute('aria-valuenow')) {
+                  const valueNow = parseFloat(el.getAttribute('aria-valuenow') || '0');
+                  const valueMax = parseFloat(el.getAttribute('aria-valuemax') || '100');
+                  progressValue = Math.round((valueNow / valueMax) * 100);
+                }
+              }
+            });
+          } catch (e) {
+            // Ignore errors for individual selectors
+            console.error(`Error checking selector ${selector}:`, e);
+          }
+        }
+        
+        // Also check for common AJAX loading indicators
+        if (!isLoading) {
+          // Look for spinning icons from common libraries (Font Awesome, Material Icons, etc.)
+          const spinIcons = document.querySelectorAll('.fa-spinner, .fa-spin, .spin, .material-icons-spin, .rotating');
+          spinIcons.forEach((icon: Element) => {
+            if (isElementVisible(icon)) {
+              isLoading = true;
+              loadingElements.push({
+                selector: 'icon',
+                text: icon.textContent?.trim() || 'spinning icon'
+              });
+            }
+          });
+          
+          // Check if there are any elements with animation
+          const animatedElements = Array.from(document.querySelectorAll('*')).filter((el: Element) => {
+            const style = window.getComputedStyle(el);
+            return style.animation !== 'none' && 
+                   isElementVisible(el) && 
+                   (el.className.includes('load') || 
+                    el.className.includes('spin') || 
+                    el.className.includes('progress'));
+          });
+          
+          if (animatedElements.length > 0) {
+            isLoading = true;
+            loadingElements.push({
+              selector: 'animated',
+              text: 'Animated loading element detected'
+            });
+          }
+        }
+        
+        // Return loading state information
+        return { 
+          isLoading, 
+          loadingElements, 
+          progressValue 
+        };
+      }, selectors);
+      
+      // If loading is detected, start monitoring until complete
+      if (loadingState.isLoading) {
+        this.startLoadingMonitor(page, selectors);
+        
+        // Emit loading state
+        PuppeteerActions.io?.sockets.emit("loading-state-update", {
+          isLoading: true,
+          progress: loadingState.progressValue
+        });
+        
+        return {
+          status: "success",
+          message: `Loading detected: ${loadingState.loadingElements.length} indicators found, monitoring until complete`
+        };
+      } else {
+        // No loading indicators found
+        PuppeteerActions.io?.sockets.emit("loading-state-update", {
+          isLoading: false
+        });
+        
+        // Emit page-ready event immediately if we're coming from an action
+        if (action.params?.afterAction) {
+          PuppeteerActions.io?.sockets.emit("page-ready");
+        }
+        
+        return {
+          status: "success",
+          message: "No loading indicators detected, page is ready"
+        };
+      }
+    } catch (error) {
+      console.error("Loading detection error:", error);
+      
+      // If we encounter an error, assume the page is ready to avoid getting stuck
+      PuppeteerActions.io?.sockets.emit("loading-state-update", { isLoading: false });
+      PuppeteerActions.io?.sockets.emit("page-ready");
+      
+      return {
+        status: "error",
+        message: `Failed to detect loading state: ${error instanceof Error ? error.message : "Unknown error"}`
+      };
+    }
+  }
+  
+  /**
+   * Monitors loading state until completion
+   * @param page Playwright Page instance
+   * @param selectors CSS selectors to check for loading indicators
+   */
+  private static startLoadingMonitor(page: Page, selectors: string[]) {
+    // Clear any existing monitoring
+    if (this.loadingMonitorInterval) {
+      clearInterval(this.loadingMonitorInterval);
+      this.loadingMonitorInterval = null;
+    }
+    
+    this.isMonitoringLoading = true;
+    
+    // Set interval to check loading state until complete
+    this.loadingMonitorInterval = setInterval(async () => {
+      try {
+        // Check current loading state
+        const loadingState = await page.evaluate((selectors) => {
+          // Helper function to check if an element or any of its children are visible
+          const isElementVisible = (element: Element | null) => {
+            if (!element) return false;
+            
+            const style = window.getComputedStyle(element);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+              return false;
+            }
+            
+            const rect = element.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) {
+              return false;
+            }
+            
+            return true;
+          };
+        
+          // Check if any loading indicators are still present
+          let isLoading = false;
+          let progressValue = null;
+          
+          for (const selector of selectors) {
+            try {
+              const elements = document.querySelectorAll(selector);
+              elements.forEach((el: Element) => {
+                if (isElementVisible(el)) {
+                  isLoading = true;
+                  
+                  // Try to get progress value if available
+                  if (el.tagName === 'PROGRESS' && el.hasAttribute('value')) {
+                    const value = parseFloat(el.getAttribute('value') || '0');
+                    const max = parseFloat(el.getAttribute('max') || '100');
+                    progressValue = Math.round((value / max) * 100);
+                  }
+                  // Check for aria-valuenow for role="progressbar"
+                  else if (el.getAttribute('role') === 'progressbar' && el.hasAttribute('aria-valuenow')) {
+                    const valueNow = parseFloat(el.getAttribute('aria-valuenow') || '0');
+                    const valueMax = parseFloat(el.getAttribute('aria-valuemax') || '100');
+                    progressValue = Math.round((valueNow / valueMax) * 100);
+                  }
+                }
+              });
+            } catch (e) {
+              // Ignore errors for individual selectors
+            }
+          }
+          
+          // Also check for common AJAX loading indicators if no loading elements found
+          if (!isLoading) {
+            // Look for spinning icons from common libraries
+            const spinIcons = document.querySelectorAll('.fa-spinner, .fa-spin, .spin, .material-icons-spin, .rotating');
+            isLoading = Array.from(spinIcons).some(isElementVisible);
+            
+            // Check if there are any elements with animation
+            if (!isLoading) {
+              const animatedElements = Array.from(document.querySelectorAll('*')).filter((el: Element) => {
+                const style = window.getComputedStyle(el);
+                return style.animation !== 'none' && 
+                       isElementVisible(el) && 
+                       (el.className.includes('load') || 
+                        el.className.includes('spin') || 
+                        el.className.includes('progress'));
+              });
+              
+              isLoading = animatedElements.length > 0;
+            }
+          }
+          
+          return { isLoading, progressValue };
+        }, selectors);
+        
+        // Emit current loading state
+        PuppeteerActions.io?.sockets.emit("loading-state-update", {
+          isLoading: loadingState.isLoading,
+          progress: loadingState.progressValue
+        });
+        
+        // If loading complete, stop monitoring
+        if (!loadingState.isLoading) {
+          if (this.loadingMonitorInterval) {
+            clearInterval(this.loadingMonitorInterval);
+            this.loadingMonitorInterval = null;
+          }
+          
+          this.isMonitoringLoading = false;
+          
+          // Emit page-ready event
+          PuppeteerActions.io?.sockets.emit("page-ready");
+        }
+      } catch (error) {
+        console.error("Loading monitor error:", error);
+        
+        // If we encounter an error, stop monitoring and assume page is ready
+        if (this.loadingMonitorInterval) {
+          clearInterval(this.loadingMonitorInterval);
+          this.loadingMonitorInterval = null;
+        }
+        
+        this.isMonitoringLoading = false;
+        PuppeteerActions.io?.sockets.emit("loading-state-update", { isLoading: false });
+        PuppeteerActions.io?.sockets.emit("page-ready");
+      }
+    }, 500); // Check every 500ms
+  }
+  
+  /**
+   * Handle form submission and wait for completion
+   * @param page Playwright Page instance
+   * @param action Action request containing form selector
+   * @returns ActionResponse
+   */
+  static async submitForm(page: Page, action: ActionRequest): Promise<ActionResponse> {
+    try {
+      const selector = action.params?.selector || 'form';
+      
+      // Find and submit the form
+      const formCount = await page.evaluate((selector) => {
+        const forms = selector === 'form' 
+          ? document.forms 
+          : document.querySelectorAll(selector);
+          
+        if (forms.length === 0) return 0;
+        
+        // Submit the first matching form
+        try {
+          if (forms[0].tagName === 'FORM') {
+            forms[0].submit();
+          } else {
+            // If it's not a form but another element, look for a submit button inside
+            const submitBtn = forms[0].querySelector('button[type="submit"], input[type="submit"]');
+            if (submitBtn) {
+              (submitBtn as HTMLElement).click();
+            } else {
+              // If no submit button, try submitting a parent form if it exists
+              let parent = forms[0].parentElement;
+              while (parent) {
+                if (parent.tagName === 'FORM') {
+                  parent.submit();
+                  break;
+                }
+                parent = parent.parentElement;
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error submitting form:", e);
+        }
+        
+        return forms.length;
+      }, selector);
+      
+      if (formCount === 0) {
+        return {
+          status: "error",
+          message: `No form found with selector: ${selector}`
+        };
+      }
+      
+      // Set up a navigation promise to detect if the submission causes navigation
+      const navigationPromise = page.waitForNavigation({ 
+        timeout: 5000,
+        waitUntil: 'domcontentloaded' 
+      }).catch(() => null);
+      
+      // Wait for either navigation or detect loading
+      const result = await Promise.race([
+        navigationPromise,
+        new Promise(resolve => setTimeout(resolve, 1000))
+      ]);
+      
+      // If navigation occurred, update the URL
+      if (result !== null) {
+        const currentUrl = page.url();
+        PuppeteerActions.io?.sockets.emit("url-change", currentUrl);
+      }
+      
+      // Start loading detection regardless
+      await this.detectLoading(page, {
+        action: 'detectLoading',
+        source: 'chrome-puppeteer',  // Required by ActionRequest interface
+        params: {
+          selectors: [
+            '.loading', 
+            '.spinner', 
+            'progress',
+            '.progress',
+            '.loader',
+            '[role="progressbar"]'
+          ],
+          afterAction: true
+        }
+      });
+      
+      // Notify that action was performed
+      PuppeteerActions.io?.sockets.emit("action_performed");
+      
+      return {
+        status: "success",
+        message: "Form submitted successfully"
+      };
+    } catch (error) {
+      console.error("Form submission error:", error);
+      
+      // Notify that action was performed even if there was an error
+      PuppeteerActions.io?.sockets.emit("action_performed");
+      
+      return {
+        status: "error",
+        message: `Form submission failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      };
+    }
   }
 }

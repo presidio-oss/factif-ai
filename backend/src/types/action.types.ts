@@ -10,6 +10,7 @@ export interface ActionRequest {
   source: StreamingSource;
   elements?: IClickableElement[];
   marker?: number;
+  params?: Record<string, any>; // Additional parameters for actions
 }
 
 export interface OmniParserResult {

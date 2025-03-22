@@ -10,6 +10,13 @@ interface BrowserAction {
   params: Record<string, any>;
 }
 
+// Loading state detection configurations
+interface LoadingDetectionConfig {
+  maxWaitTime: number;       // Maximum time to wait for loading to complete (ms)
+  pollingInterval: number;   // How often to check if loading is complete (ms)
+  loadingIndicators: string[]; // CSS selectors for common loading indicators
+}
+
 export class UIInteractionService {
   private static instance: UIInteractionService;
   private socketInitialized: boolean = false;
@@ -24,6 +31,21 @@ export class UIInteractionService {
   private lastClickTime: number = 0;
   private lastClickCoords: { x: number; y: number } | null = null;
   private _hoverThrottleTimeout: ReturnType<typeof setTimeout> | null = null;
+  private _isWaitingForLoading: boolean = false;
+  private _waitTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private _loadingDetectionConfig: LoadingDetectionConfig = {
+    maxWaitTime: 30000,       // 30 seconds default max wait time
+    pollingInterval: 500,     // Check every 500ms
+    loadingIndicators: [
+      '.loading', 
+      '.spinner', 
+      'progress',
+      '.progress',
+      '.loader',
+      '[role="progressbar"]',
+      // Add more common loading indicator selectors
+    ]
+  };
 
   /**
    * Check if the browser is currently started
@@ -188,6 +210,27 @@ export class UIInteractionService {
     socket.on("input-focused", (coordinates) => {
       this.consoleService.emitConsoleEvent("info", `Input element focused at (${coordinates.x}, ${coordinates.y})`);
       this.lastClickCoords = coordinates;
+    });
+    
+    // Handle loading state detection
+    socket.on("loading-state-update", ({ isLoading, progress }) => {
+      if (isLoading) {
+        this.consoleService.emitConsoleEvent("info", `Loading in progress${progress ? `: ${progress}%` : ''}`);
+        this._isWaitingForLoading = true;
+      } else {
+        this.consoleService.emitConsoleEvent("info", "Loading completed");
+        this._isWaitingForLoading = false;
+        if (this.actionPerformedResolve) {
+          this.actionPerformedResolve();
+          this.actionPerformedResolve = null;
+        }
+      }
+    });
+    
+    // Handle page ready events (DOM content loaded, etc)
+    socket.on("page-ready", () => {
+      this.consoleService.emitConsoleEvent("info", "Page is fully loaded");
+      this._isWaitingForLoading = false;
     });
   }
 
@@ -443,10 +486,69 @@ export class UIInteractionService {
     }
   }
 
+  /**
+   * Wait for loading to complete
+   * @param timeout Optional timeout override in ms
+   * @returns Promise that resolves when loading completes or rejects on timeout
+   */
+  async waitForLoading(timeout?: number): Promise<void> {
+    const socket = SocketService.getInstance().getSocket();
+    if (!socket) {
+      throw new Error("Cannot wait for loading: Socket not initialized");
+    }
+    
+    const maxWaitTime = timeout || this._loadingDetectionConfig.maxWaitTime;
+    
+    return new Promise<void>((resolve, reject) => {
+      // If not already waiting for loading
+      if (!this._isWaitingForLoading) {
+        // Check if there are any loading indicators on the page
+        this.emitBrowserAction({
+          action: "detectLoading",
+          params: { 
+            selectors: this._loadingDetectionConfig.loadingIndicators 
+          },
+        });
+      }
+      
+      // Setup listener for loading completion
+      const loadingCompleteHandler = () => {
+        if (this._waitTimeoutId) {
+          clearTimeout(this._waitTimeoutId);
+          this._waitTimeoutId = null;
+        }
+        socket.off("loading-state-update", loadingUpdateHandler);
+        socket.off("page-ready", loadingCompleteHandler);
+        this._isWaitingForLoading = false;
+        resolve();
+      };
+      
+      // Handle loading state updates
+      const loadingUpdateHandler = ({ isLoading }: { isLoading: boolean }) => {
+        if (!isLoading) {
+          loadingCompleteHandler();
+        }
+      };
+      
+      socket.on("loading-state-update", loadingUpdateHandler);
+      socket.on("page-ready", loadingCompleteHandler);
+      
+      // Set timeout to prevent waiting indefinitely
+      this._waitTimeoutId = setTimeout(() => {
+        socket.off("loading-state-update", loadingUpdateHandler);
+        socket.off("page-ready", loadingCompleteHandler);
+        this._isWaitingForLoading = false;
+        this.consoleService.emitConsoleEvent("warn", `Wait for loading timed out after ${maxWaitTime}ms`);
+        reject(new Error(`Wait for loading timed out after ${maxWaitTime}ms`));
+      }, maxWaitTime);
+    });
+  }
+
   async performAction(
     action: string,
     coordinate?: string,
     text?: string,
+    waitTimeout?: number
   ): Promise<void> {
     const socket = SocketService.getInstance().getSocket();
     if (
@@ -495,6 +597,19 @@ export class UIInteractionService {
           this.emitBrowserAction({ action: "back", params: {} });
           this.consoleService.emitConsoleEvent("info", "Back navigation action sent");
           break;
+          
+        case "wait":
+          // Wait for loading to complete or a specific condition
+          const waitTimeout = text ? parseInt(text, 10) : undefined;
+          this.waitForLoading(waitTimeout)
+            .then(() => {
+              this.consoleService.emitConsoleEvent("info", "Wait completed successfully");
+              clearTimeoutAndResolve();
+            })
+            .catch((error) => {
+              clearTimeoutAndReject(error instanceof Error ? error : new Error(String(error)));
+            });
+          break;
 
         case "click":
           if (coordinate) {
@@ -542,6 +657,18 @@ export class UIInteractionService {
               "info",
               `Type action: ${text}`,
             );
+            
+            // After typing, automatically check for loading indicators
+            // This helps with form submissions that might happen after typing
+            setTimeout(() => {
+              this.emitBrowserAction({
+                action: "detectLoading",
+                params: { 
+                  selectors: this._loadingDetectionConfig.loadingIndicators,
+                  afterAction: true 
+                },
+              });
+            }, 300);
           } else {
             clearTimeoutAndReject(new Error("Type action requires text"));
           }
@@ -594,6 +721,26 @@ export class UIInteractionService {
           this.cleanup();
           this.consoleService.emitConsoleEvent("info", "Browser closed");
           clearTimeoutAndResolve();
+          break;
+          
+        case "submit":
+          // Submit form and wait for loading to complete
+          this.emitBrowserAction({
+            action: "submit",
+            params: coordinate ? { selector: coordinate } : {},
+          });
+          this.consoleService.emitConsoleEvent("info", "Form submission action sent");
+          
+          // Automatically check for loading after submission
+          setTimeout(() => {
+            this.emitBrowserAction({
+              action: "detectLoading",
+              params: { 
+                selectors: this._loadingDetectionConfig.loadingIndicators,
+                afterAction: true 
+              },
+            });
+          }, 300);
           break;
 
         default:
