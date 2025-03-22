@@ -23,6 +23,7 @@ export class UIInteractionService {
   private actionPerformedResolve: (() => void) | null = null;
   private lastClickTime: number = 0;
   private lastClickCoords: { x: number; y: number } | null = null;
+  private _hoverThrottleTimeout: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Check if the browser is currently started
@@ -261,37 +262,86 @@ export class UIInteractionService {
     const scaledX = Math.round(relativeX * scaleX);
     const scaledY = Math.round(relativeY * scaleY);
 
-    const currentTime = Date.now();
-    const timeDiff = currentTime - this.lastClickTime;
-    const isDoubleClick =
-      timeDiff < 300 &&
-      this.lastClickCoords &&
-      Math.abs(this.lastClickCoords.x - scaledX) < 5 &&
-      Math.abs(this.lastClickCoords.y - scaledY) < 5;
+    // For click events only
+    if (event.type === 'click' || event.type === 'mousedown') {
+      const currentTime = Date.now();
+      const timeDiff = currentTime - this.lastClickTime;
+      const isDoubleClick =
+        timeDiff < 300 &&
+        this.lastClickCoords &&
+        Math.abs(this.lastClickCoords.x - scaledX) < 5 &&
+        Math.abs(this.lastClickCoords.y - scaledY) < 5;
 
-    if (isDoubleClick) {
-      this.emitBrowserAction({
-        action: "doubleClick",
-        params: { x: scaledX, y: scaledY },
-      });
-      this.consoleService.emitConsoleEvent(
-        "info",
-        `Double click event at scaled coordinates (${scaledX}, ${scaledY})`,
-      );
-      this.lastClickTime = 0;
-      this.lastClickCoords = null;
-    } else {
-      this.emitBrowserAction({
-        action: "click",
-        params: { x: scaledX, y: scaledY },
-      });
-      this.consoleService.emitConsoleEvent(
-        "info",
-        `Click event at scaled coordinates (${scaledX}, ${scaledY})`,
-      );
-      this.lastClickTime = currentTime;
-      this.lastClickCoords = { x: scaledX, y: scaledY };
+      if (isDoubleClick) {
+        this.emitBrowserAction({
+          action: "doubleClick",
+          params: { x: scaledX, y: scaledY },
+        });
+        this.consoleService.emitConsoleEvent(
+          "info",
+          `Double click event at scaled coordinates (${scaledX}, ${scaledY})`,
+        );
+        this.lastClickTime = 0;
+        this.lastClickCoords = null;
+      } else {
+        this.emitBrowserAction({
+          action: "click",
+          params: { x: scaledX, y: scaledY },
+        });
+        this.consoleService.emitConsoleEvent(
+          "info",
+          `Click event at scaled coordinates (${scaledX}, ${scaledY})`,
+        );
+        this.lastClickTime = currentTime;
+        this.lastClickCoords = { x: scaledX, y: scaledY };
+      }
     }
+  }
+  
+  /**
+   * Handle mouse hover interactions
+   * @param event Mouse event
+   * @param imageElement Image element being hovered
+   */
+  handleHoverInteraction(event: MouseEvent, imageElement: HTMLImageElement) {
+    const socket = SocketService.getInstance().getSocket();
+    if (
+      !socket ||
+      !this.interactiveModeEnabled
+    )
+      return;
+
+    // Calculate hover coordinates using the same scaling logic as for clicks
+    const imageRect = imageElement.getBoundingClientRect();
+    const naturalWidth = imageElement.naturalWidth;
+    const naturalHeight = imageElement.naturalHeight;
+
+    const scaleX = naturalWidth / imageRect.width;
+    const scaleY = naturalHeight / imageRect.height;
+
+    const relativeX = event.clientX - imageRect.left;
+    const relativeY = event.clientY - imageRect.top;
+
+    const scaledX = Math.round(relativeX * scaleX);
+    const scaledY = Math.round(relativeY * scaleY);
+    
+    // Throttle hover events to avoid overwhelming the server
+    // Use setTimeout with a small delay to debounce hover events
+    if (this._hoverThrottleTimeout) {
+      clearTimeout(this._hoverThrottleTimeout);
+    }
+    
+    this._hoverThrottleTimeout = setTimeout(() => {
+      this.emitBrowserAction({
+        action: "hover",
+        params: { x: scaledX, y: scaledY },
+      });
+      
+      this.consoleService.emitConsoleEvent(
+        "info",
+        `Hover event at scaled coordinates (${scaledX}, ${scaledY})`,
+      );
+    }, 50); // 50ms throttle
   }
 
   handleKeyboardInteraction(event: KeyboardEvent) {
@@ -507,6 +557,24 @@ export class UIInteractionService {
             this.consoleService.emitConsoleEvent(
               "info",
               `Key press action: ${text}`,
+            );
+          }
+          break;
+
+        case "hover":
+          if (coordinate) {
+            const [x, y] = coordinate.split(",").map(Number);
+            this.emitBrowserAction({
+              action: "hover",
+              params: { x, y },
+            });
+            this.consoleService.emitConsoleEvent(
+              "info",
+              `Hover event at coordinates (${x}, ${y})`,
+            );
+          } else {
+            clearTimeoutAndReject(
+              new Error("Hover action requires coordinates"),
             );
           }
           break;

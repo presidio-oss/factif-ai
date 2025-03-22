@@ -2,6 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom hover effects for interactive preview */
+.interactive-preview-active {
+  cursor: pointer;
+}
+
+.interactive-preview-active:hover {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+  transition: box-shadow 0.2s ease-in-out;
+}
+
+/* Custom cursor styles for different actions in interactive mode */
+.interactive-mode-active {
+  cursor: default;
+}
+
+.interactive-mode-active:hover {
+  cursor: pointer;
+}
+
+.interactive-mode-hover-effect {
+  position: absolute;
+  pointer-events: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.3);
+  border: 1px solid rgba(59, 130, 246, 0.7);
+  transform: translate(-50%, -50%);
+  transition: opacity 0.2s ease-in-out;
+  z-index: 1000;
+}
+
 .overflow-y-auto::-webkit-scrollbar {
   display: none;
 }

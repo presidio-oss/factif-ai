@@ -82,10 +82,18 @@ export const usePreview = () => {
     if (!interactiveMode || !previewRef.current || !imageRef.current || streamingSource !== 'chrome-puppeteer') return;
 
     if ('nativeEvent' in event && event.nativeEvent instanceof MouseEvent) {
-      UIInteractionService.getInstance().handleMouseInteraction(
-        event as React.MouseEvent,
-        imageRef.current
-      );
+      // For mousemove events, use handleHoverInteraction
+      if (event.type === 'mousemove') {
+        UIInteractionService.getInstance().handleHoverInteraction(
+          event as React.MouseEvent,
+          imageRef.current
+        );
+      } else {
+        UIInteractionService.getInstance().handleMouseInteraction(
+          event as React.MouseEvent,
+          imageRef.current
+        );
+      }
     } else if ('nativeEvent' in event && event.nativeEvent instanceof KeyboardEvent) {
       UIInteractionService.getInstance().handleKeyboardInteraction(
         event as React.KeyboardEvent

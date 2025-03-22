@@ -7,6 +7,7 @@ import { getCoordinate } from "../../../utils/historyManager";
 export class PuppeteerActions {
   private static io: SocketServer;
   private static puppeteerService: PuppeteerService;
+  private static lastHoverPosition: {x: number, y: number} | null = null;
 
   static initialize(io: SocketServer, puppeteerService: PuppeteerService) {
     PuppeteerActions.io = io;
@@ -290,6 +291,73 @@ export class PuppeteerActions {
       return {
         status: "error",
         message: `Failed to scroll down: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  }
+
+  /**
+   * Performs hover action at specified coordinates
+   * @param page Playwright Page instance
+   * @param action Action request containing coordinates
+   * @returns Action response
+   */
+  static async hover(page: Page, action: ActionRequest): Promise<ActionResponse> {
+    if (!action || !action.coordinate) {
+      return {
+        status: "error",
+        message: "Coordinates are required for hover action",
+      };
+    }
+    const coordinate = getCoordinate(action.coordinate);
+    
+    try {
+      // Store the last hover position
+      PuppeteerActions.lastHoverPosition = {
+        x: coordinate.x,
+        y: coordinate.y
+      };
+      
+      // Check if element exists at coordinates
+      const elementExists = await page.evaluate((coordinate) => {
+        const element = document.elementFromPoint(coordinate.x, coordinate.y);
+        return !!element;
+      }, coordinate);
+      
+      if (!elementExists) {
+        return {
+          status: "error",
+          message: "No element found at hover coordinates",
+        };
+      }
+      
+      // Move the mouse to the specified coordinates without clicking
+      await page.mouse.move(coordinate.x, coordinate.y);
+      
+      // Get element info for better feedback
+      const elementInfo = await page.evaluate((coordinate) => {
+        const element = document.elementFromPoint(coordinate.x, coordinate.y);
+        if (!element) return null;
+        
+        return {
+          tagName: element.tagName.toLowerCase(),
+          className: element.className,
+          id: element.id,
+          hasHoverStyles: !!window.getComputedStyle(element, ':hover')
+        };
+      }, coordinate);
+      
+      // Notify that action was performed
+      PuppeteerActions.io?.sockets.emit("action_performed");
+      
+      return {
+        status: "success",
+        message: `Hover performed at (${coordinate.x},${coordinate.y}) over ${elementInfo?.tagName || 'element'}`,
+      };
+    } catch (error) {
+      console.error("Hover action error:", error);
+      return {
+        status: "error",
+        message: `Failed to hover: ${error instanceof Error ? error.message : "Unknown error"}`,
       };
     }
   }

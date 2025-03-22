@@ -147,6 +147,9 @@ export class PuppeteerService extends BaseStreamingService {
         case "keyPress":
           return await PuppeteerActions.keyPress(PuppeteerService.page, action);
           
+        case "hover":
+          return await PuppeteerActions.hover(PuppeteerService.page, action);
+          
         case "back":
           return await PuppeteerActions.back(PuppeteerService.page);
           
