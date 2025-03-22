@@ -52,16 +52,29 @@ export const usePreview = () => {
     }
   };
 
-  const handleBackNavigation = () => {
+  const handleBackNavigation = async () => {
     if (urlHistory.length > 1 && streamingSource === 'chrome-puppeteer') {
-      const newHistory = [...urlHistory];
-      newHistory.pop();
-      const previousUrl = newHistory[newHistory.length - 1];
-      setCurrentUrl(previousUrl);
-      setUrlInput(previousUrl);
-      setUrlHistory(newHistory);
-      const browserService = UIInteractionService.getInstance();
-      browserService.handleSourceChange(streamingSource, previousUrl);
+      // Use the browser's native back functionality instead of restarting the browser
+      try {
+        const browserService = UIInteractionService.getInstance();
+        
+        // Call the new back navigation method
+        await browserService.handleBackNavigation();
+        
+        // We'll update the URL and history from the URL change event, but prepare
+        // our local state in case the event doesn't arrive
+        const newHistory = [...urlHistory];
+        newHistory.pop();
+        const previousUrl = newHistory[newHistory.length - 1];
+        
+        // Set placeholder values in case the URL change event doesn't update them
+        setCurrentUrl(previousUrl);
+        setUrlInput(previousUrl);
+        setUrlHistory(newHistory);
+      } catch (error) {
+        console.error("Failed to navigate back:", error);
+        consoleService.getInstance().emitConsoleEvent('error', `Back navigation failed: ${error}`);
+      }
     }
   };
 

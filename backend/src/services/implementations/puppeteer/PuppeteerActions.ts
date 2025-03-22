@@ -24,48 +24,70 @@ export class PuppeteerActions {
       };
     }
     const coordinate = getCoordinate(action.coordinate);
-    const res = await page.evaluate((coordinate) => {
-      try {
-        const element = document.elementFromPoint(
-          coordinate.x,
-          coordinate.y
-        ) as Element;
-        const { top } = element.getBoundingClientRect();
+    
+    try {
+      // First, check if element is within viewport using evaluate
+      const res = await page.evaluate((coordinate) => {
+        try {
+          const element = document.elementFromPoint(
+            coordinate.x,
+            coordinate.y
+          ) as Element;
+          
+          if (!element) {
+            return {
+              isSuccess: false,
+              message: "No element found at specified coordinates"
+            };
+          }
+          
+          const { top } = element.getBoundingClientRect();
+          const isOffScreen = top > window.innerHeight || top < window.scrollY;
+          
+          if (isOffScreen) {
+            element.scrollIntoView({ behavior: "smooth" });
+          }
 
-        if (top > window.innerHeight || top < window.scrollY) {
-          element.scrollIntoView({ behavior: "smooth" });
+          return {
+            tagName: element.tagName,
+            isInput: element.tagName === 'INPUT' || element.tagName === 'TEXTAREA',
+            isSuccess: true,
+            isOffScreen
+          };
+        } catch (e) {
+          return {
+            isSuccess: false,
+            message:
+              "Element not available on the visible viewport. Please check if the element is visible in the current viewport."
+          };
         }
-
+      }, coordinate);
+      
+      if (!res.isSuccess) {
         return {
-          top,
-          isSuccess: true,
-          isConditionPassed: top > window.innerHeight || top < window.scrollY,
-        };
-      } catch (e) {
-        return {
-          isSuccess: false,
-          message:
-            "Element not available on the visible viewport. Please check if the element is visible in the current viewport otherwise scroll the page to make the element visible in the viewport",
+          status: "error",
+          message: res.message || "Element not found at coordinates",
         };
       }
-    }, coordinate);
-    if (!res.isSuccess) {
-      return {
-        status: res.isSuccess ? "success" : "error",
-        message: res.message || "",
-      };
-    }
 
-    try {
-      await page.mouse.move(coordinate.x, coordinate.y);
-      await page.mouse.click(coordinate.x, coordinate.y, {
-        button: "left",
-        clickCount: 1,
-      });
-      // Create a navigation promise that resolves on load or times out after 5 seconds
+      // If element was off-screen, wait a moment for scrolling to complete
+      if (res.isOffScreen) {
+        await page.waitForTimeout(300);
+      }
+
+      // Use Playwright's more reliable click method
+      await page.mouse.click(coordinate.x, coordinate.y);
+      
+      // If we clicked on an input field, emit a signal to remember its position for typing
+      if (res.isInput) {
+        PuppeteerActions.io?.sockets.emit('input-focused', {x: coordinate.x, y: coordinate.y});
+      }
+      
+      // Notify that action was performed
+      PuppeteerActions.io?.sockets.emit("action_performed");
+      
+      // Wait for page to stabilize after the click
       await this.waitTillHTMLStable(page);
-
-      // Wait for both navigation and click to complete
 
       return {
         status: "success",
@@ -85,27 +107,59 @@ export class PuppeteerActions {
       throw new Error("Text is required for type action");
     }
 
-    if (!action.coordinate || !action.text) {
+    if (!action.text) {
       return {
         status: "error",
-        message: "Coordinates & text are required for type action",
+        message: "Text is required for type action",
       };
     }
-    const coordinate = getCoordinate(action.coordinate as string);
-    const isElementFocused = await page.evaluate((coordinate) => {
-      const el = document.elementFromPoint(coordinate!.x, coordinate!.y);
-      return el === document.activeElement;
-    }, coordinate);
-    if (isElementFocused) {
-      await page.keyboard.type(action!.text as string);
+    
+    try {
+      // Ensure the element is focused (even if coordinates aren't provided)
+      if (action.coordinate) {
+        const coordinate = getCoordinate(action.coordinate as string);
+        
+        // Check if element at coordinate is focusable
+        const isFocusable = await page.evaluate((coordinate) => {
+          const el = document.elementFromPoint(coordinate.x, coordinate.y);
+          if (!el) return false;
+          
+          // Check if this is a focusable element
+          const tagName = el.tagName.toLowerCase();
+          const isInput = tagName === 'input' || tagName === 'textarea' || 
+                         el.hasAttribute('contenteditable');
+          
+          // If focusable, try to focus it
+          if (isInput) {
+            // Cast to HTMLElement which has focus() method
+            (el as HTMLElement).focus();
+            return true;
+          }
+          return false;
+        }, coordinate);
+        
+        if (!isFocusable) {
+          // If not naturally focusable, try clicking it first
+          await page.mouse.click(coordinate.x, coordinate.y);
+          await page.waitForTimeout(100); // Small delay after click
+        }
+      }
+
+      // Type the text with proper typing delay for stability
+      await page.keyboard.type(action.text as string, { delay: 10 });
+      
+      // Notify that action was performed
+      PuppeteerActions.io?.sockets.emit("action_performed");
+      
       return {
         status: "success",
         message: "Type action performed successfully",
       };
-    } else {
+    } catch (error) {
+      console.error("Type action error:", error);
       return {
         status: "error",
-        message: "Element is not focused. Please click on the element first.",
+        message: `Failed to type text: ${error instanceof Error ? error.message : "Unknown error"}`,
       };
     }
   }
@@ -124,7 +178,10 @@ export class PuppeteerActions {
       // After navigation, emit the new URL
       const currentUrl = page.url();
       PuppeteerActions.io?.sockets.emit("url-change", currentUrl);
+      // Notify that action was performed
       PuppeteerActions.io?.sockets.emit("action_performed");
+      
+      // Wait for page to stabilize
       await this.waitTillHTMLStable(page);
       return {
         status: "success",
@@ -146,44 +203,95 @@ export class PuppeteerActions {
     if (!action.key)
       return {
         status: "error",
-        message: "key and coordinate are required for keypress action",
+        message: "Key is required for keypress action",
       };
-    const isFocused = await page.evaluate(() => {
-      return document.activeElement;
-    });
-    if (isFocused) {
+      
+    try {
+      // Check if any element is focused
+      const isFocused = await page.evaluate(() => {
+        return document.activeElement !== document.body && 
+               document.activeElement !== document.documentElement;
+      });
+      
+      // If we have coordinates, try to click first to ensure focus
+      if (action.coordinate && !isFocused) {
+        const coordinate = getCoordinate(action.coordinate);
+        await page.mouse.click(coordinate.x, coordinate.y);
+        await page.waitForTimeout(100); // Small delay after click
+      }
+      
+      // Handle special key mapping for cross-platform compatibility
       let newKey = action.key;
       if (action.key.toLowerCase().includes("control")) {
         newKey = action.key.toLowerCase().replace("control", "ControlOrMeta");
       }
-      await page.keyboard.press(newKey, { delay: 10 });
+      
+      // Execute the key press with a small delay for stability
+      await page.keyboard.press(newKey, { delay: 20 });
+      
+      // Notify that action was performed
+      PuppeteerActions.io?.sockets.emit("action_performed");
+      
+      // Wait for any potential page updates
       await this.waitTillHTMLStable(page);
+      
       return {
         status: "success",
         message: "Keypress action performed successfully",
       };
-    } else {
+    } catch (error) {
+      console.error("Keypress action error:", error);
       return {
         status: "error",
-        message: "Element is not focused. Please click on the element first.",
+        message: `Failed to perform key press: ${error instanceof Error ? error.message : "Unknown error"}`,
       };
     }
   }
 
   static async scrollUp(page: Page): Promise<ActionResponse> {
-    await page.mouse.wheel(0, -200);
-    return {
-      status: "success",
-      message: "Scroll up action performed successfully",
-    };
+    try {
+      await page.mouse.wheel(0, -200);
+      
+      // Notify that action was performed
+      PuppeteerActions.io?.sockets.emit("action_performed");
+      
+      // Wait briefly for the scroll to take effect
+      await page.waitForTimeout(100);
+      
+      return {
+        status: "success",
+        message: "Scroll up action performed successfully",
+      };
+    } catch (error) {
+      console.error("Scroll up error:", error);
+      return {
+        status: "error",
+        message: `Failed to scroll up: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
   }
 
   static async scrollDown(page: Page): Promise<ActionResponse> {
-    await page.mouse.wheel(0, 200);
-    return {
-      status: "success",
-      message: "Scroll down action performed successfully",
-    };
+    try {
+      await page.mouse.wheel(0, 200);
+      
+      // Notify that action was performed
+      PuppeteerActions.io?.sockets.emit("action_performed");
+      
+      // Wait briefly for the scroll to take effect
+      await page.waitForTimeout(100);
+      
+      return {
+        status: "success",
+        message: "Scroll down action performed successfully",
+      };
+    } catch (error) {
+      console.error("Scroll down error:", error);
+      return {
+        status: "error",
+        message: `Failed to scroll down: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
   }
 
   // page.goto { waitUntil: "networkidle0" } may not ever resolve, and not waiting could return page content too early before js has loaded

@@ -176,10 +176,17 @@ export class UIInteractionService {
     });
 
     socket.on("action_performed", () => {
+      this.consoleService.emitConsoleEvent("info", "Action performed event received");
       if (this.actionPerformedResolve) {
         this.actionPerformedResolve();
         this.actionPerformedResolve = null;
       }
+    });
+    
+    // Handle input element focus notification
+    socket.on("input-focused", (coordinates) => {
+      this.consoleService.emitConsoleEvent("info", `Input element focused at (${coordinates.x}, ${coordinates.y})`);
+      this.lastClickCoords = coordinates;
     });
   }
 
@@ -204,13 +211,40 @@ export class UIInteractionService {
       }
     }
   }
+  
+  /**
+   * Handles browser back navigation without resetting the browser
+   * Uses the browser's native history navigation capabilities
+   * @returns {Promise<void>}
+   */
+  async handleBackNavigation(): Promise<void> {
+    const socket = SocketService.getInstance().getSocket();
+    
+    if (!socket || !this.interactiveModeEnabled) {
+      this.consoleService.emitConsoleEvent(
+        "error",
+        "Cannot perform back navigation: Socket not initialized or interactive mode not enabled"
+      );
+      return;
+    }
+    
+    try {
+      // Use the existing performAction method with the "back" action
+      await this.performAction("back");
+      this.consoleService.emitConsoleEvent("info", "Back navigation performed");
+    } catch (error) {
+      this.consoleService.emitConsoleEvent(
+        "error", 
+        `Back navigation failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
+  }
 
   handleMouseInteraction(event: MouseEvent, imageElement: HTMLImageElement) {
     const socket = SocketService.getInstance().getSocket();
     if (
       !socket ||
-      (this.currentSource === "ubuntu-docker-vnc" &&
-        !this.interactiveModeEnabled)
+      !this.interactiveModeEnabled
     )
       return;
 
@@ -264,8 +298,7 @@ export class UIInteractionService {
     const socket = SocketService.getInstance().getSocket();
     if (
       !socket ||
-      (this.currentSource === "ubuntu-docker-vnc" &&
-        !this.interactiveModeEnabled)
+      !this.interactiveModeEnabled
     )
       return;
 
@@ -313,8 +346,7 @@ export class UIInteractionService {
     const socket = SocketService.getInstance().getSocket();
     if (
       !socket ||
-      (this.currentSource === "ubuntu-docker-vnc" &&
-        !this.interactiveModeEnabled)
+      !this.interactiveModeEnabled
     )
       return;
 
@@ -348,6 +380,15 @@ export class UIInteractionService {
   private emitBrowserAction(action: BrowserAction) {
     const socket = SocketService.getInstance().getSocket();
     if (socket) {
+      // Log the action being sent
+      this.consoleService.emitConsoleEvent(
+        "info", 
+        `Sending browser action: ${action.action} ${
+          action.params.x !== undefined ? `at (${action.params.x}, ${action.params.y})` : ""
+        }`
+      );
+      
+      // Send the action to the server
       socket.emit("browser-action", action);
     }
   }
@@ -360,8 +401,7 @@ export class UIInteractionService {
     const socket = SocketService.getInstance().getSocket();
     if (
       !socket ||
-      (this.currentSource === "ubuntu-docker-vnc" &&
-        !this.interactiveModeEnabled)
+      !this.interactiveModeEnabled
     ) {
       this.consoleService.emitConsoleEvent(
         "error",
@@ -400,6 +440,12 @@ export class UIInteractionService {
 
       socket.on("action_performed", actionPerformedHandler);
       switch (action.toLowerCase()) {
+        case "back":
+          // Back navigation action
+          this.emitBrowserAction({ action: "back", params: {} });
+          this.consoleService.emitConsoleEvent("info", "Back navigation action sent");
+          break;
+
         case "click":
           if (coordinate) {
             const [x, y] = coordinate.split(",").map(Number);

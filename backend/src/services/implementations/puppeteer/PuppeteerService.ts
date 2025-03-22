@@ -96,47 +96,76 @@ export class PuppeteerService extends BaseStreamingService {
     params?: any
   ): Promise<ActionResponse> {
     try {
-      this.emitConsoleLog("info", `Performing browser action: ${action}`);
-      if (!PuppeteerService.page)
+      this.emitConsoleLog("info", `Performing browser action: ${action.action}`);
+      
+      if (!PuppeteerService.page || !PuppeteerService.browser) {
+        this.emitConsoleLog("error", "Browser not launched for action: " + action.action);
         return {
           status: "error",
           message: "Browser not launched. Please launch the browser first.",
         };
+      }
 
+      // Handle actions
       switch (action.action) {
         case "launch":
           return this.initialize(params?.url);
+          
         case "close":
           await this.cleanup();
           return { 
             status: "success", 
             message: "Browser closed successfully" 
           };
+          
         case "click":
-          const response = await PuppeteerActions.click(PuppeteerService.page, action);
-          await PuppeteerService.page.waitForLoadState("domcontentloaded", {
-            timeout: 20_000,
-          });
-          return response;
+          // Execute click and get response
+          const clickResponse = await PuppeteerActions.click(PuppeteerService.page, action);
+          
+          // Wait for page to stabilize after click, but use a shorter timeout
+          try {
+            await PuppeteerService.page.waitForLoadState("domcontentloaded", {
+              timeout: 5000, // Shorter timeout to prevent hanging
+            });
+          } catch (error) {
+            // If timeout occurs, log but continue - page might be stable already
+            const errorMessage = error instanceof Error ? error.message : "Unknown error";
+            this.emitConsoleLog("warn", `Load wait timed out after click: ${errorMessage}`);
+          }
+          
+          return clickResponse;
+          
         case "type":
           return await PuppeteerActions.type(PuppeteerService.page, action);
+          
         case "scroll_up":
           return await PuppeteerActions.scrollUp(PuppeteerService.page);
+          
         case "scroll_down":
           return await PuppeteerActions.scrollDown(PuppeteerService.page);
+          
         case "keyPress":
           return await PuppeteerActions.keyPress(PuppeteerService.page, action);
+          
         case "back":
           return await PuppeteerActions.back(PuppeteerService.page);
+          
         default:
-          throw new Error(`Unsupported action type: ${action}`);
+          this.emitConsoleLog("error", `Unsupported action type: ${action.action}`);
+          return {
+            status: "error",
+            message: `Unsupported action type: ${action.action}`
+          };
       }
     } catch (error: any) {
-      this.emitConsoleLog(
-        "error",
-        `Browser action error: ${error.message || "Unknown error"}`
-      );
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      this.emitConsoleLog("error", `Browser action error (${action.action}): ${errorMessage}`);
+      
+      // Return a friendly error response rather than throwing
+      return {
+        status: "error",
+        message: `Action '${action.action}' failed: ${errorMessage}`,
+      };
     }
   }
 
