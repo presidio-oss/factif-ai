@@ -13,6 +13,7 @@ export class PuppeteerService extends BaseStreamingService {
   private isConnected: boolean = false;
   static browser: Browser | null = null;
   static page: Page | null = null;
+  private lastKnownUrl: string = '';
 
   protected screenshotInterval: NodeJS.Timeout | null = null;
 
@@ -77,6 +78,11 @@ export class PuppeteerService extends BaseStreamingService {
 
       await PuppeteerService.page.goto(url);
       await PuppeteerActions.waitTillHTMLStable(PuppeteerService.page);
+      
+      // Store and emit the initial URL
+      this.lastKnownUrl = PuppeteerService.page.url();
+      this.io.emit("url-change", this.lastKnownUrl);
+      
       this.isConnected = true;
       this.isInitialized = true;
       this.startScreenshotStream();
@@ -193,6 +199,9 @@ export class PuppeteerService extends BaseStreamingService {
       }
 
       try {
+        // Monitor and emit URL changes
+        await this.checkAndEmitUrlChanges();
+        
         const screenshot = await this.takeScreenshot();
         if (screenshot) {
           this.io.emit("screenshot-stream", screenshot);
@@ -207,6 +216,28 @@ export class PuppeteerService extends BaseStreamingService {
     }, interval);
 
     this.emitConsoleLog("info", "Screenshot stream started");
+  }
+  
+  /**
+   * Check if the URL has changed and emit a URL change event if it has
+   */
+  private async checkAndEmitUrlChanges(): Promise<void> {
+    if (!PuppeteerService.page) return;
+    
+    try {
+      // Get the current URL
+      const currentUrl = PuppeteerService.page.url();
+      
+      // If URL has changed, emit a URL change event
+      if (currentUrl && currentUrl !== this.lastKnownUrl) {
+        this.lastKnownUrl = currentUrl;
+        this.io.emit("url-change", currentUrl);
+        this.emitConsoleLog("info", `URL changed to: ${currentUrl}`);
+      }
+    } catch (error) {
+      // Log the error but don't throw it to avoid disrupting the screenshot stream
+      this.emitConsoleLog("error", `Error checking URL: ${error}`);
+    }
   }
 
   stopScreenshotStream(): void {

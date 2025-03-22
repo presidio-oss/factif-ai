@@ -160,9 +160,19 @@ export const usePreview = () => {
       const browserService = UIInteractionService.getInstance();
       
       const unsubscribe = browserService.onUrlChange((newUrl: string) => {
+        // Ensure we're getting the complete URL including path and query params
         setCurrentUrl(newUrl);
         setUrlInput(newUrl);
-        setUrlHistory(prev => [...prev, newUrl]);
+        
+        // Only add to history if it's a new URL to avoid duplicates
+        setUrlHistory(prev => {
+          // Don't add duplicate URLs to history
+          const lastUrl = prev[prev.length - 1];
+          if (lastUrl !== newUrl) {
+            return [...prev, newUrl];
+          }
+          return prev;
+        });
       });
 
       return () => {

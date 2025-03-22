@@ -89,6 +89,11 @@ export class PuppeteerActions {
       
       // Wait for page to stabilize after the click
       await this.waitTillHTMLStable(page);
+      
+      // Check if the URL has changed after click (to handle navigation)
+      const currentUrl = page.url();
+      // Emit the URL change event to ensure URL bar is updated
+      PuppeteerActions.io?.sockets.emit("url-change", currentUrl);
 
       return {
         status: "success",
@@ -235,6 +240,10 @@ export class PuppeteerActions {
       
       // Wait for any potential page updates
       await this.waitTillHTMLStable(page);
+      
+      // Check for URL changes after key press (Enter key can trigger navigation)
+      const currentUrl = page.url();
+      PuppeteerActions.io?.sockets.emit("url-change", currentUrl);
       
       return {
         status: "success",
