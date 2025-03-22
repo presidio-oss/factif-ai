@@ -10,7 +10,7 @@ import {
 export class MessagePatterns {
   private static patterns = {
     followupQuestion:
-      /<ask_followup_question>[\s\n]*<question>[\s\n]*(.*?)[\s\n]*<\/question>[\s\n]*<\/ask_followup_question>/s,
+      /<(?:ask_followup_question|follow_up_question)>[\s\n]*<question>[\s\n]*(.*?)[\s\n]*<\/question>(?:[\s\n]*<additional_info>(.*?)<\/additional_info>)?[\s\n]*<\/(?:ask_followup_question|follow_up_question)>/s,
     completeTask:
       /<complete_task>[\s\n]*<result>([\s\S]*?)<\/result>(?:[\s\n]*<command>(.*?)<\/command>)?[\s\n]*<\/complete_task>/s,
     performAction:
@@ -29,6 +29,11 @@ export class MessagePatterns {
       {
         open: "<ask_followup_question>",
         close: "</ask_followup_question>",
+        processor: this.processFollowupQuestion.bind(this),
+      },
+      {
+        open: "<follow_up_question>",
+        close: "</follow_up_question>",
         processor: this.processFollowupQuestion.bind(this),
       },
       {
@@ -196,12 +201,18 @@ export class MessagePatterns {
   private static processFollowupQuestion(
     fullMatch: string,
   ): IProcessedMessagePart | null {
-    const question = fullMatch.match(this.patterns.followupQuestion)?.[1];
+    const matches = fullMatch.match(this.patterns.followupQuestion);
     let match = null;
-    if (question) {
+    if (matches && matches[1]) {
+      const question = matches[1];
+      const additionalInfo = matches[2] || null;
       match = {
         length: fullMatch.length,
-        part: { type: "followup_question", question } as FollowupQuestion,
+        part: { 
+          type: "followup_question", 
+          question,
+          ...(additionalInfo && { additionalInfo })
+        } as FollowupQuestion,
       };
     }
     return match;

@@ -30,6 +30,13 @@ const MessagePartRenderer = ({ part }: { part: MessagePart }) => {
           <ReactMarkdown components={markdownComponents}>
             {part.question}
           </ReactMarkdown>
+          {part.additionalInfo && (
+            <div className="mt-2 text-sm text-foreground/70">
+              <ReactMarkdown components={markdownComponents}>
+                {part.additionalInfo}
+              </ReactMarkdown>
+            </div>
+          )}
         </div>
       );
 

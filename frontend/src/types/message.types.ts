@@ -3,6 +3,7 @@ import { OmniParserResult } from "@/types/chat.types.ts";
 export interface FollowupQuestion {
   type: "followup_question";
   question: string;
+  additionalInfo?: string;
 }
 
 export interface CompleteTask {
