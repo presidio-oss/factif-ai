@@ -606,7 +606,7 @@ export class UIInteractionService {
         socket.off("action_performed", actionPerformedHandler);
         clearTimeoutAndReject(new Error("Action timed out"));
         this.consoleService.emitConsoleEvent("error", `Action timed out`);
-      }, 30_000);
+      }, 5_000);
     });
   }
 }

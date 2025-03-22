@@ -377,6 +377,10 @@ export class PuppeteerService extends BaseStreamingService {
     return url;
   }
 
+  /**
+   * Take a screenshot of the current page using Playwright's optimized screenshot API
+   * @returns Base64 encoded string of the screenshot image
+   */
   async takeScreenshot(): Promise<string> {
     try {
       if (!PuppeteerService.browser || !PuppeteerService.page) {
@@ -385,29 +389,34 @@ export class PuppeteerService extends BaseStreamingService {
         );
       }
 
-      // Get context safely
-      const contexts = PuppeteerService.browser.contexts();
-      if (!contexts || contexts.length === 0) {
-        throw new Error("No browser context available");
-      }
-      
-      const context = contexts[0];
-      
-      // Get page safely
-      const pages = context.pages();
-      if (!pages || pages.length === 0) {
-        throw new Error("No page available in context");
-      }
-      
-      const page = pages[0];
-      
-      // Take screenshot with error handling
+      // In Playwright we can use the page directly without explicitly getting the context
+      // This simplifies the code and reduces potential errors
       try {
-        const buffer = await page.screenshot({ type: "png" });
+        // Use Playwright's screenshot options for better quality and performance
+        const buffer = await PuppeteerService.page.screenshot({ 
+          type: "jpeg", // JPEG is faster than PNG and still good quality for previews
+          quality: 90, // Good balance of quality and size
+          fullPage: false, // Only capture viewport for performance
+          timeout: 3000, // Prevent hanging on problematic pages
+          scale: 'css', // Use CSS pixels for consistent scaling
+        });
+        
         return buffer.toString("base64");
       } catch (screenshotError) {
-        this.emitConsoleLog("error", `Screenshot error: ${screenshotError}`);
-        throw screenshotError;
+        // If standard screenshot fails, try with minimal options
+        this.emitConsoleLog("warn", `Standard screenshot failed, trying fallback: ${screenshotError}`);
+        
+        try {
+          const buffer = await PuppeteerService.page.screenshot({ 
+            type: "jpeg",
+            quality: 70,
+            timeout: 2000
+          });
+          return buffer.toString("base64");
+        } catch (fallbackError) {
+          this.emitConsoleLog("error", `Fallback screenshot failed: ${fallbackError}`);
+          throw fallbackError;
+        }
       }
     } catch (e) {
       this.emitConsoleLog("error", `Failed to take screenshot: ${e}`);

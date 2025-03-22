@@ -14,6 +14,13 @@ export class PuppeteerActions {
     PuppeteerActions.puppeteerService = puppeteerService;
   }
 
+  /**
+   * Performs a click action at the specified coordinates using Playwright's optimized interaction methods
+   * 
+   * @param page Playwright Page instance
+   * @param action Action request containing coordinates
+   * @returns ActionResponse with status and message
+   */
   static async click(
     page: Page,
     action: ActionRequest
@@ -27,83 +34,99 @@ export class PuppeteerActions {
     const coordinate = getCoordinate(action.coordinate);
     
     try {
-      // First, check if element is within viewport using evaluate
-      const res = await page.evaluate((coordinate) => {
-        try {
-          const element = document.elementFromPoint(
-            coordinate.x,
-            coordinate.y
-          ) as Element;
-          
-          if (!element) {
-            return {
-              isSuccess: false,
-              message: "No element found at specified coordinates"
-            };
-          }
-          
-          const { top } = element.getBoundingClientRect();
-          const isOffScreen = top > window.innerHeight || top < window.scrollY;
-          
-          if (isOffScreen) {
-            element.scrollIntoView({ behavior: "smooth" });
-          }
-
-          return {
-            tagName: element.tagName,
-            isInput: element.tagName === 'INPUT' || element.tagName === 'TEXTAREA',
-            isSuccess: true,
-            isOffScreen
-          };
-        } catch (e) {
-          return {
-            isSuccess: false,
-            message:
-              "Element not available on the visible viewport. Please check if the element is visible in the current viewport."
-          };
+      const beforeUrl = page.url();
+      let hasNavigation = false;
+      let isInput = false;
+      
+      // Set up a navigation promise to detect if the click causes navigation
+      const navigationPromise = page.waitForNavigation({ 
+        timeout: 5000,
+        waitUntil: 'domcontentloaded' 
+      }).catch(() => {
+        // Catch timeout - navigation might not happen
+        return null;
+      });
+      
+      // First attempt to identify an element at the coordinates
+      const elementInfo = await page.evaluate((coord) => {
+        const element = document.elementFromPoint(coord.x, coord.y);
+        if (!element) return null;
+        
+        const { tagName, id, className } = element;
+        const href = element.getAttribute('href');
+        const isOffScreen = element.getBoundingClientRect().top > window.innerHeight || 
+                           element.getBoundingClientRect().top < window.scrollY;
+        const isInput = tagName === 'INPUT' || tagName === 'TEXTAREA' || 
+                       element.hasAttribute('contenteditable');
+                       
+        if (isOffScreen) {
+          element.scrollIntoView({ behavior: "smooth", block: "center" });
         }
+        
+        return {
+          tagName,
+          id,
+          className,
+          href,
+          isInput,
+          isOffScreen,
+        };
       }, coordinate);
       
-      if (!res.isSuccess) {
+      if (!elementInfo) {
         return {
           status: "error",
-          message: res.message || "Element not found at coordinates",
+          message: "No element found at specified coordinates",
         };
       }
-
-      // If element was off-screen, wait a moment for scrolling to complete
-      if (res.isOffScreen) {
+      
+      // If element was off-screen, wait briefly for scrolling to complete
+      if (elementInfo.isOffScreen) {
         await page.waitForTimeout(300);
       }
-
-      // Use Playwright's more reliable click method
+      
+      // Store if this is an input field for later
+      isInput = elementInfo.isInput;
+      
+      // Use Playwright's click with precise coordinates
       await page.mouse.click(coordinate.x, coordinate.y);
       
-      // If we clicked on an input field, emit a signal to remember its position for typing
-      if (res.isInput) {
+      // Wait for potential navigation triggered by the click
+      const navigationResult = await navigationPromise;
+      hasNavigation = navigationResult !== null;
+      
+      // If we clicked on an input field, emit a signal to remember its position
+      if (isInput) {
         PuppeteerActions.io?.sockets.emit('input-focused', {x: coordinate.x, y: coordinate.y});
       }
       
       // Notify that action was performed
       PuppeteerActions.io?.sockets.emit("action_performed");
       
-      // Wait for page to stabilize after the click
-      await this.waitTillHTMLStable(page);
+      // If navigation occurred, it already waited for stability
+      if (!hasNavigation) {
+        // Wait for page to stabilize after the click using Playwright's mechanisms
+        await this.waitTillHTMLStable(page);
+      }
       
-      // Check if the URL has changed after click (to handle navigation)
+      // Get current URL and check if it changed
       const currentUrl = page.url();
-      // Emit the URL change event to ensure URL bar is updated
-      PuppeteerActions.io?.sockets.emit("url-change", currentUrl);
+      if (currentUrl !== beforeUrl) {
+        // Emit URL change event
+        PuppeteerActions.io?.sockets.emit("url-change", currentUrl);
+      }
 
       return {
         status: "success",
-        message: "Click action performed successfully",
+        message: hasNavigation 
+          ? "Click performed with navigation" 
+          : "Click action performed successfully",
       };
-    } catch (e) {
-      console.error("Click action error:", e);
+    } catch (error) {
+      console.error("Click action error:", error);
       return {
         status: "error",
-        message: "Click action failed. Please retry",
+        message: `Click action failed: ${error instanceof Error ? error.message : "Please retry"}`,
       };
     }
   }
@@ -371,36 +394,33 @@ export class PuppeteerActions {
     }
   }
 
-  // page.goto { waitUntil: "networkidle0" } may not ever resolve, and not waiting could return page content too early before js has loaded
-  // https://stackoverflow.com/questions/52497252/puppeteer-wait-until-page-is-completely-loaded/61304202#61304202
-  static async waitTillHTMLStable(page: Page, timeout = 5_000) {
-    const checkDurationMsecs = 500; // 500
-    const maxChecks = timeout / checkDurationMsecs;
-    let lastHTMLSize = 0;
-    let checkCounts = 1;
-    let countStableSizeIterations = 0;
-    const minStableSizeIterations = 3;
-
-    while (checkCounts++ <= maxChecks) {
-      let html = await page.content();
-      let currentHTMLSize = html.length;
-
-      // let bodyHTMLSize = await page.evaluate(() => document.body.innerHTML.length)
-      console.log("last: ", lastHTMLSize, " <> curr: ", currentHTMLSize);
-
-      if (lastHTMLSize !== 0 && currentHTMLSize === lastHTMLSize) {
-        countStableSizeIterations++;
-      } else {
-        countStableSizeIterations = 0; //reset the counter
-      }
-
-      if (countStableSizeIterations >= minStableSizeIterations) {
-        console.log("Page rendered fully...");
-        break;
-      }
-
-      lastHTMLSize = currentHTMLSize;
-      await new Promise((resolve) => setTimeout(resolve, checkDurationMsecs));
+  /**
+   * Fast and efficient page stability check using Playwright's capabilities.
+   * Optimized for quick response while ensuring minimal stability requirements are met.
+   * 
+   * @param page Playwright Page object
+   * @param timeout Maximum time to wait in milliseconds
+   */
+  static async waitTillHTMLStable(page: Page, timeout = 2_000) {
+    try {
+      // Use Promise.race to wait for either domcontentloaded OR a short timeout
+      // This ensures we don't block for too long on slow-loading resources
+      await Promise.race([
+        // Wait for essential DOM content
+        page.waitForLoadState('domcontentloaded', { timeout: Math.min(timeout, 1500) })
+          .catch(() => console.log("DOM content load check completed or timed out")),
+          
+        // Backup timeout to ensure we don't block too long
+        new Promise(resolve => setTimeout(resolve, Math.min(timeout, 1000)))
+      ]);
+      
+      // Skip running heavy animation checks for better performance
+      // Most important UI elements should be ready by this point
+      
+      console.log("Basic stability check completed");
+    } catch (e) {
+      // Log but don't block - we should still continue even if waiting fails
+      console.log("Page stability checks timed out, continuing anyway");
     }
   }
 
