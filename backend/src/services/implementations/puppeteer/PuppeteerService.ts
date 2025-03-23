@@ -16,6 +16,7 @@ export class PuppeteerService extends BaseStreamingService {
   private lastKnownUrl: string = '';
 
   protected screenshotInterval: NodeJS.Timeout | null = null;
+  private navigationMonitorInterval: NodeJS.Timeout | null = null;
 
   constructor(serviceConfig: ServiceConfig) {
     super(serviceConfig);
@@ -50,6 +51,9 @@ export class PuppeteerService extends BaseStreamingService {
 
       const context = await PuppeteerService.browser.newContext();
       PuppeteerService.page = await context.newPage();
+      
+      // Configure page to intercept new tab navigations
+      await this.configureNewTabInterception(PuppeteerService.page);
       
       // Set memory and CPU usage limits
       try {
@@ -253,11 +257,159 @@ export class PuppeteerService extends BaseStreamingService {
     }
   }
 
+  /**
+   * Configure the page to intercept new tab navigations and redirect them to the current tab
+   * This ensures links with target="_blank" still work and are visible in the UI
+   */
+  private async configureNewTabInterception(page: Page): Promise<void> {
+    this.emitConsoleLog("info", "Configuring new tab interception");
+    
+    // 1. Add script to override window.open
+    await page.addInitScript(() => {
+      // Store the original window.open function
+      const originalWindowOpen = window.open;
+      
+      // Override window.open to redirect to the same tab
+      // @ts-ignore - Ignoring TypeScript errors for client-side code
+      window.open = function(url?: string | URL | null, target?: string, features?: string): Window | null {
+        if (url) {
+          // Instead of opening a new window, navigate the current one
+          window.location.href = url.toString(); // Convert URL object to string if needed
+          // Return a mock window object to prevent errors
+          return {
+            closed: false,
+            document: document,
+            location: location,
+            close: function() {},
+            focus: function() {},
+            blur: function() {},
+            postMessage: function() {}
+          } as unknown as Window;
+        }
+        // If no URL provided, fall back to original behavior
+        // Ensure we pass correct types to originalWindowOpen
+        return originalWindowOpen(url as string | URL | undefined, target, features);
+      };
+      
+      // Log this change to console for debugging
+      console.log("[FactifAI] window.open intercepted for single-tab navigation");
+    });
+    
+    // 2. Add click event listener to handle target="_blank" links
+    await page.addInitScript(() => {
+      // Intercept all link clicks
+      document.addEventListener('click', function(event) {
+        // Check if the clicked element or its parent is a link
+        const link = (event.target as HTMLElement).closest('a');
+        
+        // If it's a link with target="_blank" or "_new"
+        if (link && (link.target === '_blank' || link.target === '_new') && link.href) {
+          // Prevent default action
+          event.preventDefault();
+          
+          // Navigate current window instead
+          window.location.href = link.href;
+          
+          // Log for debugging
+          console.log(`[FactifAI] Intercepted link with target=${link.target}, navigating in same tab to: ${link.href}`);
+        }
+      }, true); // Use capture phase to intercept before other handlers
+      
+      console.log("[FactifAI] Link click interception enabled for single-tab navigation");
+    });
+    
+    // 3. Set up page route handler for downloadable content
+    await page.route('**/*', async (route) => {
+      const response = await route.fetch();
+      const headers = response.headers();
+      
+      // Check if response has Content-Disposition header for attachment
+      if (headers['content-disposition']?.includes('attachment')) {
+        this.emitConsoleLog("info", "Detected file download - handling in current tab");
+      }
+      
+      // Continue with the route
+      await route.continue();
+    });
+    
+    // 4. Set up monitoring for DOM-based navigation
+    await this.monitorDomNavigation(page);
+  }
+  
+  /**
+   * Monitor for DOM-based navigation in single page applications
+   */
+  private async monitorDomNavigation(page: Page): Promise<void> {
+    // Watch for history API usage
+    await page.addInitScript(() => {
+      // @ts-ignore - Ignore TypeScript errors for browser-side code
+      const originalPushState = history.pushState;
+      const originalReplaceState = history.replaceState;
+      
+      // @ts-ignore - We're overriding browser APIs in a way TypeScript doesn't understand
+      history.pushState = function() {
+        // @ts-ignore - Using 'this' and 'arguments' in a non-standard way
+        const result = originalPushState.apply(this, arguments as any);
+        window.dispatchEvent(new Event('locationchange'));
+        return result;
+      };
+      
+      // @ts-ignore - We're overriding browser APIs in a way TypeScript doesn't understand
+      history.replaceState = function() {
+        // @ts-ignore - Using 'this' and 'arguments' in a non-standard way
+        const result = originalReplaceState.apply(this, arguments as any);
+        window.dispatchEvent(new Event('locationchange'));
+        return result;
+      };
+      
+      window.addEventListener('popstate', () => {
+        window.dispatchEvent(new Event('locationchange'));
+      });
+      
+      // Dispatch a custom event we can listen for
+      window.addEventListener('locationchange', () => {
+        console.log('[FactifAI] Location change detected:', window.location.href);
+        // We'll use a custom attribute to signal this to our screenshot code
+        document.documentElement.setAttribute('data-location-changed', 'true');
+      });
+    });
+    
+    // Setup an interval to check for this attribute
+    const checkInterval = setInterval(async () => {
+      if (!PuppeteerService.page) {
+        clearInterval(checkInterval);
+        return;
+      }
+      
+      const hasChanged = await PuppeteerService.page.evaluate(() => {
+        const changed = document.documentElement.getAttribute('data-location-changed') === 'true';
+        if (changed) {
+          document.documentElement.removeAttribute('data-location-changed');
+        }
+        return changed;
+      }).catch(() => false);
+      
+      if (hasChanged) {
+        // Force a URL check
+        await this.checkAndEmitUrlChanges();
+      }
+    }, 300);
+    
+    // Store this interval for cleanup
+    this.navigationMonitorInterval = checkInterval;
+  }
+
   async cleanup(): Promise<void> {
     this.emitConsoleLog("info", "Cleaning up Puppeteer browser resources...");
 
     // Stop streaming before closing browser
     this.stopScreenshotStream();
+    
+    // Clear any navigation monitoring interval
+    if (this.navigationMonitorInterval) {
+      clearInterval(this.navigationMonitorInterval);
+      this.navigationMonitorInterval = null;
+    }
 
     // Actually close the browser instance with enhanced cleanup
     try {

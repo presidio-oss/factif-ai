@@ -54,12 +54,28 @@ export class PuppeteerActions {
         const element = document.elementFromPoint(coord.x, coord.y);
         if (!element) return null;
         
+        // Find the closest anchor tag if the element itself isn't one
+        const linkElement = element.tagName === 'A' 
+          ? element 
+          : element.closest('a');
+        
         const { tagName, id, className } = element;
         const href = element.getAttribute('href');
         const isOffScreen = element.getBoundingClientRect().top > window.innerHeight || 
                            element.getBoundingClientRect().top < window.scrollY;
         const isInput = tagName === 'INPUT' || tagName === 'TEXTAREA' || 
                        element.hasAttribute('contenteditable');
+        
+        // Check if this is a new tab link
+        let isNewTabLink = false;
+        let linkTarget = null;
+        let linkHref = null;
+        
+        if (linkElement) {
+          linkTarget = linkElement.getAttribute('target');
+          linkHref = linkElement.getAttribute('href');
+          isNewTabLink = linkTarget === '_blank' || linkTarget === '_new';
+        }
                        
         if (isOffScreen) {
           element.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -72,6 +88,9 @@ export class PuppeteerActions {
           href,
           isInput,
           isOffScreen,
+          isNewTabLink,
+          linkTarget,
+          linkHref
         };
       }, coordinate);
       
@@ -100,6 +119,18 @@ export class PuppeteerActions {
       // If we clicked on an input field, emit a signal to remember its position
       if (isInput) {
         PuppeteerActions.io?.sockets.emit('input-focused', {x: coordinate.x, y: coordinate.y});
+      }
+      
+      // If we clicked on a target="_blank" link, emit a signal about the interception
+      if (elementInfo.isNewTabLink && elementInfo.linkHref) {
+        PuppeteerActions.io?.sockets.emit('intercepted-newtab', {
+          target: elementInfo.linkTarget,
+          href: elementInfo.linkHref,
+          message: `Intercepted link that would open in a new tab (target="${elementInfo.linkTarget}")`,
+          currentUrl: page.url()
+        });
+        
+        console.log(`[FactifAI] Intercepted ${elementInfo.linkTarget} link to: ${elementInfo.linkHref}`);
       }
       
       // Notify that action was performed
