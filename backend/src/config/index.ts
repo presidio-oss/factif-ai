@@ -38,12 +38,12 @@ export const config: Config = {
     },
     anthropic: {
       apiKey: process.env.ANTHROPIC_API_KEY,
-      model: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+      model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
       contextConfig: {
         minMessages: 10,
         contextReservePercentage: 20,
         modelContextWindows: {
-          "us.anthropic.claude-3-7-sonnet-20250219-v1:0": 131072,
+          "anthropic.claude-3-5-sonnet-20241022-v2:0": 200000,
         },
       },
       useBedrock: process.env.USE_BEDROCK === "true",
@@ -55,7 +55,7 @@ export const config: Config = {
         },
         modelId:
           process.env.BEDROCK_MODEL_ID ||
-          "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+          "anthropic.claude-3-5-sonnet-20241022-v2:0",
       },
     },
     gemini: {

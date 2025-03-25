@@ -19,9 +19,13 @@ export class PuppeteerService extends BaseStreamingService {
   private static activeOperations: number = 0;
   private static cleanupInProgress: boolean = false;
   private static browserLock: Promise<void> = Promise.resolve();
+  private static isShuttingDown: boolean = false;
 
   protected screenshotInterval: NodeJS.Timeout | null = null;
   private navigationMonitorInterval: NodeJS.Timeout | null = null;
+  private isScreenshotStreamActive: boolean = false;
+  private lastScreenshotError: number = 0;
+  private consecutiveErrors: number = 0;
 
   constructor(serviceConfig: ServiceConfig) {
     super(serviceConfig);
@@ -63,11 +67,16 @@ export class PuppeteerService extends BaseStreamingService {
   async initialize(url: string): Promise<ActionResponse> {
     try {
       this.emitConsoleLog("info", "Initializing Puppeteer browser...");
+      
+      // Reset shutdown flag to allow new initialization
+      PuppeteerService.isShuttingDown = false;
 
       // If browser already exists, clean it up first to prevent duplicate processes
       if (PuppeteerService.browser) {
         this.emitConsoleLog("warn", "Browser instance already exists - cleaning up first");
         await this.cleanup();
+        // Reset shutdown flag again as cleanup might have set it
+        PuppeteerService.isShuttingDown = false;
       }
 
       // Launch with optimized settings to reduce resource usage
@@ -236,35 +245,70 @@ export class PuppeteerService extends BaseStreamingService {
     this.stopScreenshotStream();
 
     // Only start streaming if browser is initialized
-    if (!this.isInitialized || !this.isConnected) {
+    if (!this.isInitialized || !this.isConnected || PuppeteerService.isShuttingDown) {
       this.emitConsoleLog(
         "info",
-        "Cannot start streaming: Browser not initialized"
+        "Cannot start streaming: Browser not initialized or shutting down"
       );
       return;
     }
 
+    // Set flag to indicate streaming is active
+    this.isScreenshotStreamActive = true;
+    this.consecutiveErrors = 0;
+
     this.screenshotInterval = setInterval(async () => {
       // Check if browser is still running before attempting to get screenshot
-      if (!this.isInitialized || !this.isConnected) {
+      if (!this.isInitialized || !this.isConnected || PuppeteerService.isShuttingDown || !PuppeteerService.browser) {
+        this.emitConsoleLog("info", "Screenshot stream stopping: Browser no longer available");
         this.stopScreenshotStream();
         return;
       }
 
       try {
-        // Monitor and emit URL changes
-        await this.checkAndEmitUrlChanges();
+        // Don't attempt screenshots too rapidly after errors
+        if (this.lastScreenshotError > 0 && (Date.now() - this.lastScreenshotError) < 1000) {
+          return;
+        }
+
+        // Track the operation to prevent cleanup during screenshot processing
+        const releaseOperation = PuppeteerService.trackOperation();
         
-        const screenshot = await this.takeScreenshot();
-        if (screenshot) {
-          this.io.emit("screenshot-stream", screenshot);
+        try {
+          // Monitor and emit URL changes
+          await this.checkAndEmitUrlChanges();
+          
+          const screenshot = await this.takeScreenshot();
+          if (screenshot) {
+            this.io.emit("screenshot-stream", screenshot);
+            
+            // Reset error counter on success
+            this.consecutiveErrors = 0;
+          }
+        } finally {
+          // Always release the operation
+          releaseOperation();
         }
       } catch (error) {
-        // If we get an error, the browser might have been closed
-        // Stop the stream and update state
-        this.stopScreenshotStream();
-        this.isConnected = false;
-        this.isInitialized = false;
+        // Track error timestamp to prevent spam
+        this.lastScreenshotError = Date.now();
+        this.consecutiveErrors++;
+        
+        // Only log every few errors to avoid spam
+        if (this.consecutiveErrors % 5 === 1) {
+          this.emitConsoleLog(
+            "error", 
+            `Screenshot error (${this.consecutiveErrors}): ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+        
+        // If we've had too many consecutive errors, stop the stream
+        if (this.consecutiveErrors > 15) {
+          this.emitConsoleLog("warn", "Stopping screenshot stream due to excessive errors");
+          this.stopScreenshotStream();
+          this.isConnected = false;
+          this.isInitialized = false;
+        }
       }
     }, interval);
 
@@ -294,10 +338,19 @@ export class PuppeteerService extends BaseStreamingService {
   }
 
   stopScreenshotStream(): void {
+    // Set flag to indicate streaming is no longer active
+    this.isScreenshotStreamActive = false;
+    
+    // Clear the screenshot interval if it exists
     if (this.screenshotInterval) {
       clearInterval(this.screenshotInterval);
       this.screenshotInterval = null;
+      this.emitConsoleLog("info", "Screenshot stream stopped");
     }
+    
+    // Reset error tracking
+    this.consecutiveErrors = 0;
+    this.lastScreenshotError = 0;
   }
 
   /**
@@ -521,6 +574,8 @@ export class PuppeteerService extends BaseStreamingService {
       return;
     }
 
+    // Set shutdown flag to prevent new operations from starting
+    PuppeteerService.isShuttingDown = true;
     this.emitConsoleLog("info", "Cleaning up Puppeteer browser resources...");
     PuppeteerService.cleanupInProgress = true;
 
@@ -700,6 +755,11 @@ export class PuppeteerService extends BaseStreamingService {
    */
   async takeScreenshot(): Promise<string> {
     try {
+      // Check if we're shutting down or browser is not available
+      if (PuppeteerService.isShuttingDown) {
+        throw new Error("Browser is shutting down. Cannot take screenshot.");
+      }
+      
       if (!PuppeteerService.browser || !PuppeteerService.page) {
         throw new Error(
           "Browser is not launched. Please launch the browser first."
