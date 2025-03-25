@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.2
+
+### Minor Changes
+
+- Added multiple bug-fixes to stabilize the normal chat for basic computer use
+
+### Patch Changes
+
+- 008dcc5: Add a wait for the 'domcontentloaded' state after performing a click action to ensure the page is fully loaded.
+- 416cd9a: Update image output to common format - added wait time for each action in the puppeteer - remove auto launch scripts from vnc and revert to LLM based actions to work on VNC
+
 ## 1.3.0
 
 ### Minor Changes
@@ -12,7 +23,6 @@
   - **OpenAI Support for Explore Mode:** Explore mode now supports OpenAI models, expanding LLM options and capabilities.
   - **Chat History and Persistence:** Added chat history tracking with file storage persistence, allowing users to revisit previous conversations.
 
-
   **Bug Fixes:**
 
   - **LLM Context Isolation:** Resolved context contamination between different operating modes, ensuring accurate and isolated responses.
@@ -23,7 +33,6 @@
   **Enhancements:**
 
   - **UX Improvements:** General UX enhancements implemented to improve usability and overall user experience.
-
 
 ## 1.2.0
 
