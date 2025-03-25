@@ -178,21 +178,43 @@ export class PuppeteerService extends BaseStreamingService {
           };
           
         case "click":
-          // Execute click and get response
-          const clickResponse = await PuppeteerActions.click(PuppeteerService.page, action);
-          
-          // Wait for page to stabilize after click, but use a shorter timeout
+          // Execute click action with more robust error handling
           try {
-            await PuppeteerService.page.waitForLoadState("domcontentloaded", {
-              timeout: 5000, // Shorter timeout to prevent hanging
-            });
-          } catch (error) {
-            // If timeout occurs, log but continue - page might be stable already
-            const errorMessage = error instanceof Error ? error.message : "Unknown error";
-            this.emitConsoleLog("warn", `Load wait timed out after click: ${errorMessage}`);
+            // Execute click and get response
+            const clickResponse = await PuppeteerActions.click(PuppeteerService.page, action);
+            
+            // Wait for page to stabilize after click, but use a shorter timeout
+            try {
+              await PuppeteerService.page.waitForLoadState("domcontentloaded", {
+                timeout: 5000, // Shorter timeout to prevent hanging
+              });
+            } catch (error) {
+              // If timeout occurs, log but continue - page might be stable already
+              const errorMessage = error instanceof Error ? error.message : "Unknown error";
+              this.emitConsoleLog("warn", `Load wait timed out after click: ${errorMessage}`);
+            }
+            
+            return clickResponse;
+          } catch (clickError) {
+            // Special handling for the navigation content error
+            const errorMessage = clickError instanceof Error ? clickError.message : String(clickError);
+            
+            if (errorMessage.includes("page.content") && errorMessage.includes("navigating")) {
+              this.emitConsoleLog("warn", "Handled navigation content error gracefully");
+              
+              // Wait a bit longer for navigation to settle
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              // Return success anyway since the click likely worked
+              return {
+                status: "success", 
+                message: "Click performed (page was navigating during content check)"
+              };
+            }
+            
+            // Re-throw other errors
+            throw clickError;
           }
-          
-          return clickResponse;
           
         case "type":
           return await PuppeteerActions.type(PuppeteerService.page, action);

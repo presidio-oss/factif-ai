@@ -39,7 +39,6 @@ export class PuppeteerActions {
       const beforeUrl = page.url();
       let hasNavigation = false;
       let isInput = false;
-
       
       // First attempt to identify an element at the coordinates
       const elementInfo = await page.evaluate((coord) => {
@@ -82,7 +81,8 @@ export class PuppeteerActions {
           isOffScreen,
           isNewTabLink,
           linkTarget,
-          linkHref
+          linkHref,
+          isNavigationLikely: !!href || (linkElement && !!linkElement.getAttribute('href')) // Flag if this might navigate
         };
       }, coordinate);
       
@@ -101,10 +101,49 @@ export class PuppeteerActions {
       // Store if this is an input field for later
       isInput = elementInfo.isInput;
       
+      // Set up navigation detection if we think this might cause navigation
+      let navigationPromise = null;
+      if (elementInfo.isNavigationLikely) {
+        // Create a promise that will resolve when navigation occurs
+        navigationPromise = page.waitForNavigation({ 
+          timeout: 10000,
+          waitUntil: 'domcontentloaded'
+        }).catch(e => {
+          // Just log but don't throw - navigation might not actually happen
+          console.log("Navigation wait timed out or was aborted:", e.message);
+          return null;
+        });
+      }
+      
       // Use Playwright's click with precise coordinates
       await page.mouse.click(coordinate.x, coordinate.y);
-
-      await this.waitTillHTMLStable(page);
+      
+      // If we were expecting navigation, wait for it now
+      if (navigationPromise) {
+        try {
+          // Wait for navigation to complete with a timeout
+          const navResult = await Promise.race([
+            navigationPromise,
+            new Promise(resolve => setTimeout(() => resolve('timeout'), 5000))
+          ]);
+          
+          // If navigation occurred (not timeout), mark it
+          if (navResult !== 'timeout') {
+            hasNavigation = true;
+            console.log("Navigation detected after click");
+          }
+        } catch (navError) {
+          console.log("Error waiting for navigation:", navError);
+        }
+      }
+      
+      // Now wait for page to stabilize, with a short timeout if we detected navigation
+      try {
+        await this.waitTillHTMLStable(page, hasNavigation ? 10000 : 20000);
+      } catch (stabilityError) {
+        console.error("Error waiting for page stability:", stabilityError);
+        // Continue execution even if stability check fails
+      }
       
       // If we clicked on an input field, emit a signal to remember its position
       if (isInput) {
@@ -414,11 +453,26 @@ export class PuppeteerActions {
   /**
    * Fast and efficient page stability check using Playwright's capabilities.
    * Optimized for quick response while ensuring minimal stability requirements are met.
+   * Handles navigation events properly to avoid content access during navigation.
    * 
    * @param page Playwright Page object
    * @param timeout Maximum time to wait in milliseconds
    */
   static async waitTillHTMLStable(page: Page, timeout = 20_000) {
+    // First, wait for any ongoing navigations to complete
+    try {
+      // Short timeout to catch any immediate navigation events
+      await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {
+        // Ignore timeout - page might not be navigating
+      });
+    } catch (e) {
+      // Ignore navigation errors
+      console.log("Navigation wait error (benign):", e);
+    }
+    
+    // Initial delay to ensure the page has stabilized enough for content access
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    
     const checkDurationMsecs = 1000; // 500
     const maxChecks = timeout / checkDurationMsecs;
     let lastHTMLSize = 0;
@@ -427,24 +481,33 @@ export class PuppeteerActions {
     const minStableSizeIterations = 3;
 
     while (checkCounts++ <= maxChecks) {
-      let html = await page.content();
-      let currentHTMLSize = html.length;
+      let html = '';
+      try {
+        // Use a try-catch block to handle potential navigation errors
+        html = await page.content();
+        let currentHTMLSize = html.length;
 
-      // let bodyHTMLSize = await page.evaluate(() => document.body.innerHTML.length)
-      console.log("last: ", lastHTMLSize, " <> curr: ", currentHTMLSize);
+        console.log("last: ", lastHTMLSize, " <> curr: ", currentHTMLSize);
 
-      if (lastHTMLSize !== 0 && currentHTMLSize === lastHTMLSize) {
-        countStableSizeIterations++;
-      } else {
-        countStableSizeIterations = 0; //reset the counter
+        if (lastHTMLSize !== 0 && currentHTMLSize === lastHTMLSize) {
+          countStableSizeIterations++;
+        } else {
+          countStableSizeIterations = 0; //reset the counter
+        }
+
+        if (countStableSizeIterations >= minStableSizeIterations) {
+          console.log("Page rendered fully...");
+          break;
+        }
+
+        lastHTMLSize = currentHTMLSize;
+      } catch (error) {
+        // If we get an error while trying to access content, the page might be navigating
+        console.log("Content access error (possibly during navigation):", error);
+        // Reset stable iterations counter as content is changing
+        countStableSizeIterations = 0;
       }
-
-      if (countStableSizeIterations >= minStableSizeIterations) {
-        console.log("Page rendered fully...");
-        break;
-      }
-
-      lastHTMLSize = currentHTMLSize;
+      
       await new Promise((resolve) => setTimeout(resolve, checkDurationMsecs));
     }
   }
