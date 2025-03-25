@@ -112,6 +112,24 @@ class StreamingSourceService {
     }
   }
 
+  /**
+   * Check if a browser is actually active/running
+   * This is used to detect browsers that might have been launched directly by the LLM
+   * @returns Promise resolving to true if a browser instance is active
+   */
+  private async checkActiveBrowser(): Promise<boolean> {
+    try {
+      // Check if the service is a PuppeteerService and has an active browser instance
+      if (this.service instanceof PuppeteerService) {
+        return await this.service.hasBrowserInstance();
+      }
+      return false;
+    } catch (error) {
+      console.error("Error checking active browser:", error);
+      return false; 
+    }
+  }
+
   async performAction(
     action: string | ActionRequest,
     params?: any,
@@ -125,12 +143,21 @@ class StreamingSourceService {
     // If action is "launch", make sure to handle it even if not initialized
     const actionString = typeof action === 'string' ? action : action.action;
     if (!this.isInitialized && actionString !== "launch") {
-      console.warn(`Cannot perform action '${actionString}': Browser not initialized`);
-      return {
-        status: "error",
-        message: "Browser not initialized. Please launch the browser first.",
-        screenshot: "",
-      };
+      // NEW CODE: Check if there's actually a browser running
+      const isBrowserActive = await this.checkActiveBrowser();
+      
+      if (isBrowserActive) {
+        // If browser is active despite isInitialized=false, self-heal the state
+        console.log("Browser detected as active despite isInitialized=false, allowing action");
+        this.isInitialized = true;
+      } else {
+        console.warn(`Cannot perform action '${actionString}': Browser not initialized`);
+        return {
+          status: "error",
+          message: "Browser not initialized. Please launch the browser first.",
+          screenshot: "",
+        };
+      }
     }
     
     try {

@@ -734,6 +734,14 @@ export class PuppeteerService extends BaseStreamingService {
     }
   }
 
+  /**
+   * Check if the browser instance is available
+   * @returns true if both browser and page are available
+   */
+  public async hasBrowserInstance(): Promise<boolean> {
+    return PuppeteerService.browser !== null && PuppeteerService.page !== null;
+  }
+
   async getCurrentUrl(): Promise<string> {
     if (!PuppeteerService.page) {
       throw new Error("Browser not launched");
