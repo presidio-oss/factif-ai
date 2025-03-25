@@ -39,15 +39,7 @@ export class PuppeteerActions {
       const beforeUrl = page.url();
       let hasNavigation = false;
       let isInput = false;
-      
-      // Set up a navigation promise to detect if the click causes navigation
-      const navigationPromise = page.waitForNavigation({ 
-        timeout: 5000,
-        waitUntil: 'domcontentloaded' 
-      }).catch(() => {
-        // Catch timeout - navigation might not happen
-        return null;
-      });
+
       
       // First attempt to identify an element at the coordinates
       const elementInfo = await page.evaluate((coord) => {
@@ -111,10 +103,8 @@ export class PuppeteerActions {
       
       // Use Playwright's click with precise coordinates
       await page.mouse.click(coordinate.x, coordinate.y);
-      
-      // Wait for potential navigation triggered by the click
-      const navigationResult = await navigationPromise;
-      hasNavigation = navigationResult !== null;
+
+      await this.waitTillHTMLStable(page);
       
       // If we clicked on an input field, emit a signal to remember its position
       if (isInput) {
@@ -135,12 +125,6 @@ export class PuppeteerActions {
       
       // Notify that action was performed
       PuppeteerActions.io?.sockets.emit("action_performed");
-      
-      // If navigation occurred, it already waited for stability
-      if (!hasNavigation) {
-        // Wait for page to stabilize after the click using Playwright's mechanisms
-        await this.waitTillHTMLStable(page);
-      }
       
       // Get current URL and check if it changed
       const currentUrl = page.url();
@@ -203,7 +187,7 @@ export class PuppeteerActions {
         if (!isFocusable) {
           // If not naturally focusable, try clicking it first
           await page.mouse.click(coordinate.x, coordinate.y);
-          await page.waitForTimeout(100); // Small delay after click
+          await this.waitTillHTMLStable(page)
         }
       }
 
@@ -434,26 +418,34 @@ export class PuppeteerActions {
    * @param page Playwright Page object
    * @param timeout Maximum time to wait in milliseconds
    */
-  static async waitTillHTMLStable(page: Page, timeout = 2_000) {
-    try {
-      // Use Promise.race to wait for either domcontentloaded OR a short timeout
-      // This ensures we don't block for too long on slow-loading resources
-      await Promise.race([
-        // Wait for essential DOM content
-        page.waitForLoadState('domcontentloaded', { timeout: Math.min(timeout, 1500) })
-          .catch(() => console.log("DOM content load check completed or timed out")),
-          
-        // Backup timeout to ensure we don't block too long
-        new Promise(resolve => setTimeout(resolve, Math.min(timeout, 1000)))
-      ]);
-      
-      // Skip running heavy animation checks for better performance
-      // Most important UI elements should be ready by this point
-      
-      console.log("Basic stability check completed");
-    } catch (e) {
-      // Log but don't block - we should still continue even if waiting fails
-      console.log("Page stability checks timed out, continuing anyway");
+  static async waitTillHTMLStable(page: Page, timeout = 20_000) {
+    const checkDurationMsecs = 1000; // 500
+    const maxChecks = timeout / checkDurationMsecs;
+    let lastHTMLSize = 0;
+    let checkCounts = 1;
+    let countStableSizeIterations = 0;
+    const minStableSizeIterations = 3;
+
+    while (checkCounts++ <= maxChecks) {
+      let html = await page.content();
+      let currentHTMLSize = html.length;
+
+      // let bodyHTMLSize = await page.evaluate(() => document.body.innerHTML.length)
+      console.log("last: ", lastHTMLSize, " <> curr: ", currentHTMLSize);
+
+      if (lastHTMLSize !== 0 && currentHTMLSize === lastHTMLSize) {
+        countStableSizeIterations++;
+      } else {
+        countStableSizeIterations = 0; //reset the counter
+      }
+
+      if (countStableSizeIterations >= minStableSizeIterations) {
+        console.log("Page rendered fully...");
+        break;
+      }
+
+      lastHTMLSize = currentHTMLSize;
+      await new Promise((resolve) => setTimeout(resolve, checkDurationMsecs));
     }
   }
 
@@ -494,11 +486,8 @@ export class PuppeteerActions {
           }
           
           const rect = element.getBoundingClientRect();
-          if (rect.width === 0 || rect.height === 0) {
-            return false;
-          }
-          
-          return true;
+          return !(rect.width === 0 || rect.height === 0);
+
         };
       
         // Find all loading indicators in the document
@@ -652,11 +641,8 @@ export class PuppeteerActions {
             }
             
             const rect = element.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) {
-              return false;
-            }
-            
-            return true;
+            return !(rect.width === 0 || rect.height === 0);
+
           };
         
           // Check if any loading indicators are still present
