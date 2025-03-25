@@ -14,6 +14,11 @@ export class PuppeteerService extends BaseStreamingService {
   static browser: Browser | null = null;
   static page: Page | null = null;
   private lastKnownUrl: string = '';
+  
+  // Add reference counter for active operations
+  private static activeOperations: number = 0;
+  private static cleanupInProgress: boolean = false;
+  private static browserLock: Promise<void> = Promise.resolve();
 
   protected screenshotInterval: NodeJS.Timeout | null = null;
   private navigationMonitorInterval: NodeJS.Timeout | null = null;
@@ -21,6 +26,38 @@ export class PuppeteerService extends BaseStreamingService {
   constructor(serviceConfig: ServiceConfig) {
     super(serviceConfig);
     PuppeteerActions.initialize(serviceConfig.io, this);
+  }
+
+  /**
+   * Helper method to acquire lock for critical browser operations
+   * @returns Promise that resolves when lock is acquired
+   */
+  private static async acquireLock(): Promise<() => void> {
+    // Store the current promise to ensure we wait on it
+    const currentLock = PuppeteerService.browserLock;
+    
+    // Create a new promise and resolver for the next lock request
+    let releaseLock: () => void;
+    PuppeteerService.browserLock = new Promise<void>(resolve => {
+      releaseLock = resolve;
+    });
+    
+    // Wait for the current lock to be released
+    await currentLock;
+    
+    // Return a function to release this lock
+    return releaseLock!;
+  }
+
+  /**
+   * Track an active browser operation
+   * @returns A function to call when operation completes
+   */
+  private static trackOperation(): () => void {
+    PuppeteerService.activeOperations++;
+    return () => {
+      PuppeteerService.activeOperations--;
+    };
   }
 
   async initialize(url: string): Promise<ActionResponse> {
@@ -105,6 +142,9 @@ export class PuppeteerService extends BaseStreamingService {
     action: ActionRequest,
     params?: any
   ): Promise<ActionResponse> {
+    // Track this operation to prevent cleanup during action execution
+    const releaseOperation = PuppeteerService.trackOperation();
+    
     try {
       this.emitConsoleLog("info", `Performing browser action: ${action.action}`);
       
@@ -185,6 +225,9 @@ export class PuppeteerService extends BaseStreamingService {
         status: "error",
         message: `Action '${action.action}' failed: ${errorMessage}`,
       };
+    } finally {
+      // Always release the operation tracker to prevent browser lockout
+      releaseOperation();
     }
   }
 
@@ -318,18 +361,90 @@ export class PuppeteerService extends BaseStreamingService {
       console.log("[FactifAI] Link click interception enabled for single-tab navigation");
     });
     
-    // 3. Set up page route handler for downloadable content
+    // 3. Set up page route handler for blocking ad domains and handling downloads
     await page.route('**/*', async (route) => {
-      const response = await route.fetch();
-      const headers = response.headers();
-      
-      // Check if response has Content-Disposition header for attachment
-      if (headers['content-disposition']?.includes('attachment')) {
-        this.emitConsoleLog("info", "Detected file download - handling in current tab");
+      try {
+        // Common ad/tracking domains that might cause connection issues
+        const adDomains = [
+          'bs.serving-sys.com',
+          'amazon-adsystem.com',
+          'doubleclick.net',
+          'adservice.google.com',
+          'googleads.g.doubleclick.net',
+          'securepubads.g.doubleclick.net',
+          'pagead2.googlesyndication.com'
+        ];
+        
+        // Extract domain from URL
+        const url = route.request().url();
+        const urlObj = new URL(url);
+        const domain = urlObj.hostname;
+        
+        // Check if this is an ad domain that should be blocked
+        if (adDomains.some(adDomain => domain.includes(adDomain))) {
+          this.emitConsoleLog("info", `Blocked ad request to: ${domain}`);
+          // Abort the request instead of fetching it
+          await route.abort('blockedbyclient');
+          return;
+        }
+        
+        // Handle the fetch with timeout
+        let fetchTimeout: NodeJS.Timeout | null = null;
+        
+        try {
+          // Create a promise for the timeout
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            fetchTimeout = setTimeout(() => {
+              reject(new Error(`Request to ${domain} timed out after 5000ms`));
+            }, 5000);
+          });
+          
+          // Create the fetch promise
+          const fetchPromise = route.fetch();
+          
+          // Race them - with proper Playwright types
+          const response = await Promise.race([fetchPromise, timeoutPromise]);
+          
+          // Clear timeout if fetch succeeded
+          if (fetchTimeout) clearTimeout(fetchTimeout);
+          
+          // Check headers for attachments - Playwright's APIResponse uses headers() method
+          const contentDisposition = response.headers()['content-disposition'];
+          if (contentDisposition && contentDisposition.includes('attachment')) {
+            this.emitConsoleLog("info", "Detected file download - handling in current tab");
+          }
+          
+          // Fulfill the route with the response - already a Playwright APIResponse
+          await route.fulfill({
+            response, // Already a Playwright APIResponse object
+          });
+        } catch (error) {
+          // Clear timeout if it's still active
+          if (fetchTimeout) clearTimeout(fetchTimeout);
+          
+          // Log the error
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.emitConsoleLog("warn", `Request to ${domain} failed: ${errorMessage}`);
+          
+          // Abort the route
+          await route.abort('failed');
+        }
+      } catch (error: any) {
+        // This is the outermost error handler
+        this.emitConsoleLog("warn", `Route handling error: ${error.message}`);
+        
+        // Make sure to abort or continue to prevent the request from hanging
+        try {
+          await route.abort('failed');
+        } catch (e) {
+          // If aborting fails, try to continue as a last resort
+          try {
+            await route.continue();
+          } catch {
+            // Ignore any errors at this point; we've done our best
+          }
+        }
       }
-      
-      // Continue with the route
-      await route.continue();
     });
     
     // 4. Set up monitoring for DOM-based navigation
@@ -400,19 +515,49 @@ export class PuppeteerService extends BaseStreamingService {
   }
 
   async cleanup(): Promise<void> {
-    this.emitConsoleLog("info", "Cleaning up Puppeteer browser resources...");
-
-    // Stop streaming before closing browser
-    this.stopScreenshotStream();
-    
-    // Clear any navigation monitoring interval
-    if (this.navigationMonitorInterval) {
-      clearInterval(this.navigationMonitorInterval);
-      this.navigationMonitorInterval = null;
+    // Check if cleanup is already in progress
+    if (PuppeteerService.cleanupInProgress) {
+      this.emitConsoleLog("info", "Browser cleanup already in progress, waiting...");
+      return;
     }
 
-    // Actually close the browser instance with enhanced cleanup
+    this.emitConsoleLog("info", "Cleaning up Puppeteer browser resources...");
+    PuppeteerService.cleanupInProgress = true;
+
+    // Acquire a lock to prevent concurrent cleanup operations
+    const releaseLock = await PuppeteerService.acquireLock();
+    
     try {
+      // Check if there are any active operations and wait if needed
+      if (PuppeteerService.activeOperations > 0) {
+        this.emitConsoleLog("warn", `Waiting for ${PuppeteerService.activeOperations} active operations to complete before cleanup`);
+        
+        // Wait for active operations to complete (with a safety timeout)
+        const maxWaitTime = 5000; // 5 seconds max wait
+        const startTime = Date.now();
+        
+        while (PuppeteerService.activeOperations > 0) {
+          // Check timeout
+          if (Date.now() - startTime > maxWaitTime) {
+            this.emitConsoleLog("warn", "Timeout waiting for active operations, proceeding with cleanup");
+            break;
+          }
+          
+          // Wait a short time before checking again
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+    
+      // Stop streaming before closing browser
+      this.stopScreenshotStream();
+      
+      // Clear any navigation monitoring interval
+      if (this.navigationMonitorInterval) {
+        clearInterval(this.navigationMonitorInterval);
+        this.navigationMonitorInterval = null;
+      }
+
+      // Actually close the browser instance with enhanced cleanup
       if (PuppeteerService.browser) {
         // Get all browser contexts and close them explicitly first
         const contexts = PuppeteerService.browser.contexts();
@@ -469,55 +614,69 @@ export class PuppeteerService extends BaseStreamingService {
     this.isInitialized = false;
     this.isConnected = false;
     this.emitConsoleLog("info", "Browser resources cleaned up");
+    
+    // Reset cleanup flag and release the lock
+    PuppeteerService.cleanupInProgress = false;
+    releaseLock();
   }
 
   async captureScreenshotAndInfer(): Promise<IProcessedScreenshot> {
-    // First check if browser is available
-    if (!PuppeteerService.browser || !PuppeteerService.page) {
-      throw new Error("Browser is not launched. Cannot capture screenshot and infer elements.");
-    }
+    // Track this operation to prevent cleanup during screenshot capture
+    const releaseOperation = PuppeteerService.trackOperation();
     
-    const base64Image = await this.takeScreenshot();
-    const elements: {
-      clickableElements: IClickableElement[];
-      inputElements: IClickableElement[];
-    } = await this.getAllPageElements();
+    try {
+      // First check if browser is available
+      if (!PuppeteerService.browser || !PuppeteerService.page) {
+        throw new Error("Browser is not launched. Cannot capture screenshot and infer elements.");
+      }
+      
+      const base64Image = await this.takeScreenshot();
+      const elements = await this.getAllPageElements();
 
-    // Combine elements, but ensure we don't exceed reasonable limits for the LLM
-    const MAX_COMBINED_ELEMENTS = 400;
-    const combinedElements = [
-      ...elements.clickableElements,
-      ...elements.inputElements,
-    ].slice(0, MAX_COMBINED_ELEMENTS);
-    
-    // Get context safely without non-null assertion
-    const contexts = PuppeteerService.browser.contexts();
-    if (!contexts || contexts.length === 0) {
-      throw new Error("No browser context available");
-    }
-    
-    const context = contexts[0];
-    const pages = context.pages();
-    if (!pages || pages.length === 0) {
-      throw new Error("No page available in context");
-    }
-    
-    const page = pages[0];
-    let scrollPosition = 0;
-    let totalScroll = 0;
+      // Combine elements, but ensure we don't exceed reasonable limits for the LLM
+      const MAX_COMBINED_ELEMENTS = 400;
+      const combinedElements = [
+        ...elements.clickableElements,
+        ...elements.inputElements,
+      ].slice(0, MAX_COMBINED_ELEMENTS);
+      
+      // Get context safely without non-null assertion
+      const contexts = PuppeteerService.browser.contexts();
+      if (!contexts || contexts.length === 0) {
+        throw new Error("No browser context available");
+      }
+      
+      const context = contexts[0];
+      const pages = context.pages();
+      if (!pages || pages.length === 0) {
+        throw new Error("No page available in context");
+      }
+      
+      const page = pages[0];
+      
+      // Get scroll position data
+      const scrollData = await page.evaluate(() => {
+        return {
+          scrollPosition: window.scrollY,
+          totalScroll: document.body.scrollHeight
+        };
+      });
 
-    await page.evaluate(() => {
-      scrollPosition = window.scrollY;
-      totalScroll = document.body.scrollHeight;
-    }, null);
-
-    return {
-      image: await this.markElements(base64Image, combinedElements),
-      inference: combinedElements,
-      scrollPosition,
-      totalScroll,
-      originalImage: base64Image,
-    };
+      return {
+        image: await this.markElements(base64Image, combinedElements),
+        inference: combinedElements,
+        scrollPosition: scrollData.scrollPosition,
+        totalScroll: scrollData.totalScroll,
+        originalImage: base64Image,
+      };
+    } catch (error) {
+      // Log and rethrow the error
+      this.emitConsoleLog("error", `Failed to capture screenshot: ${error}`);
+      throw error;
+    } finally {
+      // Always release the operation tracker to prevent cleanup lock
+      releaseOperation();
+    }
   }
 
   async getCurrentUrl(): Promise<string> {
