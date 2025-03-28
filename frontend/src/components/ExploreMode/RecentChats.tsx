@@ -585,7 +585,6 @@ export const RecentChats: React.FC<RecentChatsProps> = ({ clearChat }) => {
 
             <Button
               color="primary"
-              variant="shadow"
               className="w-full"
               startContent={<PlusIcon />}
               onPress={handleNewChat}

@@ -205,12 +205,12 @@ const nodeTypes = {
 
 export function ExploreGraph() {
   const { graphData, setShowGraph } = useExploreModeContext();
-  
+
   // Add debug logging to track when graph data is received and if it's empty
   useEffect(() => {
     console.log("GraphData received in ExploreGraph:", graphData);
     console.log("Nodes length:", graphData?.nodes?.length || 0);
-    
+
     // If we have no nodes, log a warning
     if (!graphData?.nodes?.length) {
       console.warn("Graph data is empty - no nodes to display");
@@ -444,7 +444,7 @@ export function ExploreGraph() {
     console.log("GraphData update triggered:", {
       hasGraphData: !!graphData,
       nodesCount: graphData?.nodes?.length || 0,
-      edgesCount: graphData?.edges?.length || 0
+      edgesCount: graphData?.edges?.length || 0,
     });
 
     if (!graphData) {
@@ -617,7 +617,7 @@ export function ExploreGraph() {
     // Update edges with curved lines and better overlap handling
     const updatedEdges = edges.map((edge) => ({
       ...edge,
-      type: "default",
+      type: "bezier", // Change to smoothstep for curved edges
       animated: true,
       markerEnd: {
         type: MarkerType.ArrowClosed,
@@ -777,7 +777,7 @@ export function ExploreGraph() {
 
         return {
           ...edge,
-          type: "default",
+          type: "bezier",
           animated: true,
           markerEnd: {
             type: MarkerType.ArrowClosed,
@@ -802,16 +802,31 @@ export function ExploreGraph() {
 
   return (
     <div style={{ width: "100%", height: "100%" }}>
-      {(!graphData?.nodes || graphData.nodes.length === 0) ? (
-        <div className="flex flex-col items-center justify-center h-full text-gray-400">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+      {!graphData?.nodes || graphData.nodes.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-full bg-[#141414] text-gray-200">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-16 w-16 mb-4 text-blue-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+            />
           </svg>
-          <p className="text-xl font-light">No exploration data available</p>
-          <p className="text-sm mt-2">Start exploring a website to build the graph</p>
-          <button 
+          <p className="text-xl font-light text-gray-300">
+            No exploration data available
+          </p>
+          <p className="text-sm mt-2 text-gray-400">
+            Start exploring a website to build the graph
+          </p>
+          <button
             onClick={() => setShowGraph(false)}
-            className="mt-6 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            className="mt-6 px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800 transition-colors shadow-lg"
           >
             Return to Preview
           </button>
@@ -843,39 +858,39 @@ export function ExploreGraph() {
           nodesFocusable={true}
           edgesFocusable={true}
         >
-        <Panel position="top-right" className="mr-4 mt-4">
-          <FloatingGraphToggle />
-        </Panel>
+          <Panel position="top-right" className="mr-4 mt-4">
+            <FloatingGraphToggle />
+          </Panel>
 
-        <Panel
-          position="top-left"
-          className="bg-background/95 p-3 rounded shadow-lg border border-border/50"
-        >
-          <h3 className="text-white text-md font-light mb-2">
-            Sitemap: Route Categories
-          </h3>
-          {isClassifying ? (
-            <div className="text-white text-sm">Classifying routes...</div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {categoryList.map((category) => (
-                <div
-                  key={category}
-                  className="flex items-center text-sm text-white font-light"
-                >
-                  <span
-                    className="inline-block w-3 h-3 mr-1 rounded-sm"
-                    style={{ backgroundColor: getCategoryColor(category) }}
-                  />
-                  {category}
-                </div>
-              ))}
-              {categoryList.length === 0 && (
-                <div className="text-white text-sm">No categories found</div>
-              )}
-            </div>
-          )}
-        </Panel>
+          <Panel
+            position="top-left"
+            className="bg-background/95 p-3 rounded shadow-lg border border-border/50"
+          >
+            <h3 className="text-white text-md font-light mb-2">
+              Sitemap: Route Categories
+            </h3>
+            {isClassifying ? (
+              <div className="text-white text-sm">Classifying routes...</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {categoryList.map((category) => (
+                  <div
+                    key={category}
+                    className="flex items-center text-sm text-white font-light"
+                  >
+                    <span
+                      className="inline-block w-3 h-3 mr-1 rounded-sm"
+                      style={{ backgroundColor: getCategoryColor(category) }}
+                    />
+                    {category}
+                  </div>
+                ))}
+                {categoryList.length === 0 && (
+                  <div className="text-white text-sm">No categories found</div>
+                )}
+              </div>
+            )}
+          </Panel>
           <Controls />
           <Background />
         </ReactFlow>
