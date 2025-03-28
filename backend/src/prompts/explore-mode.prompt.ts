@@ -133,7 +133,7 @@ Usage:
 </perform_action>
 
 Important Notes:
-- Puppeteer: Must start with 'launch' if no screenshot exists
+- Puppeteer: Must start with 'launch' action first regardless of the existence of a screenshot. No excuses.
 - Docker: Always analyze screenshot first, no 'launch' action needed
 - Strictly use only one action per response and wait for the "Action Result" before proceeding.
 - NEVER combine perform_action with complete_task - they must be in separate messages (IMPORTANT)
