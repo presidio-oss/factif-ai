@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import { markdownComponents } from "@/utils/markdownConfig";
 import { useState } from "react";
 import { ImageModal } from "../../Modal/ImageModal";
+import { useExploreModeContext } from "@/contexts/ExploreModeContext";
 import {
   IExploredClickableElement,
   MessagePart,
@@ -41,10 +42,17 @@ const MessagePartRenderer = ({ part }: { part: MessagePart }) => {
       );
 
     case "complete_task":
+      const { isExploreMode } = useExploreModeContext();
       return (
-        <div className="mb-2 p-3 bg-success/10 rounded-lg rounded-bl-none">
-          <div className="flex items-center gap-2 mb-2 text-success font-medium">
-            <span>Task Complete</span>
+        <div className={`mb-2 p-3 ${
+          isExploreMode 
+            ? "bg-primary/15 border border-primary/30" 
+            : "bg-success/10"
+        } rounded-lg rounded-bl-none`}>
+          <div className={`flex items-center gap-2 mb-2 ${
+            isExploreMode ? "text-white/95" : "text-success"
+          } font-medium`}>
+            <span>{isExploreMode ? "Current page explored, creating documentation" : "Task Complete"}</span>
           </div>
           <div className="text-foreground">
             <ReactMarkdown components={markdownComponents}>

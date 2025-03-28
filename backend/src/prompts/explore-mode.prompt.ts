@@ -107,12 +107,10 @@ Common Actions (Both Sources):
 - Always document your understanding before page transitions
 - Call this tool before clicking links, navigation buttons, or submitting forms that might change pages
 
-Usage: <complete_task><task_status>page documentation complete</task_status><additional_info>
-Page documentation for [page name/description].
-Key UI components observed: [list all major UI elements].
-Interactive elements: [list all buttons, forms, etc.].
-Layout structure: [describe page organization].
-Potential navigation points: [identify links/buttons that likely lead to new pages].
+Usage: <complete_task><task_status>Initiating document generation for current page</task_status><additional_info>
+Key information to be listed in short way:
+UI components: [minimal list of elements]
+page information: [minimal notes]
 </additional_info></complete_task>
 
 Important Notes:
