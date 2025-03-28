@@ -83,7 +83,6 @@ export class PuppeteerService extends BaseStreamingService {
       PuppeteerService.browser = await chromium.launch({
         headless: true,
         args: [
-          '--disable-gpu',              // Disable GPU hardware acceleration
           '--disable-dev-shm-usage',    // Overcome limited resource problems
           '--disable-setuid-sandbox',   // Disable setuid sandbox (safety feature)
           '--no-sandbox',               // Disable sandbox for better performance
