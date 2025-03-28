@@ -516,6 +516,14 @@ export class PuppeteerActions {
     return await PuppeteerActions.puppeteerService.captureScreenshotAndInfer();
   }
 
+  static async isBrowserReady(): Promise<boolean> {
+    if (!PuppeteerActions.puppeteerService) {
+      console.log("PuppeteerService is not initialized");
+      return false;
+    }
+    return await PuppeteerActions.puppeteerService.hasBrowserInstance();
+  }
+
   static async getCurrentUrl() {
     return await PuppeteerActions.puppeteerService.getCurrentUrl();
   }

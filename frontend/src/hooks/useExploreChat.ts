@@ -306,7 +306,7 @@ export const useExploreChat = () => {
       source: sourceId,
       target: targetId,
       sourceHandle: edgeId,
-      type: "bezier",
+      type: "default",
       label,
     });
     exploreGraphData.current.nodes.map((node) => {

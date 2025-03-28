@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { StreamingSource } from "../types/stream.types";
 import { PuppeteerActions } from "../services/implementations/puppeteer/PuppeteerActions";
+import { PuppeteerService } from "../services/implementations/puppeteer/PuppeteerService";
 import { DockerCommands } from "../services/implementations/docker/DockerCommands";
 import { IProcessedScreenshot } from "../services/interfaces/BrowserService";
 
@@ -19,9 +20,14 @@ export const getLatestScreenshot = async (
     if (source === "chrome-puppeteer") {
       // For Puppeteer, get screenshot from the active page
       try {
-        // Since getScreenshot is private, we'll use a dummy action to get a screenshot
-        //infer the screenshot
-        screenshot = await PuppeteerActions.captureScreenshot();
+        // First check if browser is running before attempting to capture screenshot
+        // Use static properties directly since this is a singleton pattern
+        if (PuppeteerService.browser && PuppeteerService.page) {
+          // Browser is running, safe to capture screenshot
+          screenshot = await PuppeteerActions.captureScreenshot();
+        } else {
+          console.log("Browser is not launched yet. Skipping screenshot capture.");
+        }
       } catch (error) {
         console.log("No active Puppeteer session", error);
       }

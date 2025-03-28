@@ -4,7 +4,10 @@ import { StreamingSource } from "../types/stream.types";
 import { PuppeteerActions } from "../services/implementations/puppeteer/PuppeteerActions";
 import { DockerCommands } from "../services/implementations/docker/DockerCommands";
 import { DockerActions } from "../services/implementations/docker/DockerActions";
-import { IClickableElement, OmniParserResponse } from "../services/interfaces/BrowserService";
+import {
+  IClickableElement,
+  OmniParserResponse,
+} from "../services/interfaces/BrowserService";
 import { convertElementsToInput } from "./prompt.util";
 
 /**
@@ -31,26 +34,41 @@ export function logMessageRequest(messageRequest: any): void {
   }
 }
 
-
 export async function getCurrentUrlBasedOnSource(source: StreamingSource) {
   let pageUrl = "";
-  console.log("coming here");
+  console.log("Getting URL for source:", source);
+
   if (source === "chrome-puppeteer") {
-    pageUrl = await PuppeteerActions.getCurrentUrl();
+    try {
+      // Check if browser is ready
+      const isBrowserReady = await PuppeteerActions.isBrowserReady();
+      if (isBrowserReady) {
+        pageUrl = await PuppeteerActions.getCurrentUrl();
+        console.log("Retrieved Puppeteer URL:", pageUrl);
+      } else {
+        console.log("Browser not ready, cannot get URL");
+        // Return empty string when browser isn't ready
+        return "";
+      }
+    } catch (error) {
+      console.error("Error getting Puppeteer URL:", error);
+      // Handle error gracefully by returning empty string
+      return "";
+    }
   } else if (source === "ubuntu-docker-vnc") {
     try {
-      const containerName = "factif-vnc";
-      const containerStatus =
-        await DockerCommands.checkContainerStatus(containerName);
-      console.log("containerStatus", containerStatus);
-      if (
-        containerStatus.exists &&
-        containerStatus.running &&
-        containerStatus.id
-      ) {
-        pageUrl = await DockerActions.getUrl(containerStatus.id);
-        console.log("pageUrl", pageUrl);
-      }
+      //   const containerName = "factif-vnc";
+      //   const containerStatus =
+      //     await DockerCommands.checkContainerStatus(containerName);
+      //   console.log("containerStatus", containerStatus);
+      //   if (
+      //     containerStatus.exists &&
+      //     containerStatus.running &&
+      //     containerStatus.id
+      //   ) {
+      pageUrl = "IDENTIFY URL FROM SCREENSHOT";
+      console.log("Docker VNC URL:", pageUrl);
+      // }
     } catch (error) {
       console.log("No active Docker VNC session");
     }
@@ -58,7 +76,9 @@ export async function getCurrentUrlBasedOnSource(source: StreamingSource) {
   return pageUrl;
 }
 
-export const addOmniParserResults = (omniParserResult: OmniParserResponse): string => {
+export const addOmniParserResults = (
+  omniParserResult: OmniParserResponse
+): string => {
   return omniParserResult.elements
     .map((element, index) => {
       return `

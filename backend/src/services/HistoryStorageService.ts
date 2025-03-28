@@ -46,7 +46,27 @@ export class HistoryStorageService {
     try {
       await this.initialize();
       const data = await readFile(SESSIONS_LIST_FILE, 'utf8');
-      return JSON.parse(data);
+      
+      // Handle empty file case
+      if (!data || data.trim() === '') {
+        console.warn('Sessions list file is empty');
+        return [];
+      }
+      
+      try {
+        return JSON.parse(data);
+      } catch (parseError) {
+        console.error('Error parsing sessions list JSON:', parseError);
+        
+        // Create a backup of the corrupted file for debugging
+        const backupPath = `${SESSIONS_LIST_FILE}.backup.${Date.now()}`;
+        await writeFile(backupPath, data);
+        console.warn(`Created backup of corrupted sessions list at ${backupPath}`);
+        
+        // Return empty array and reset the file with empty array
+        await writeFile(SESSIONS_LIST_FILE, JSON.stringify([]));
+        return [];
+      }
     } catch (error) {
       console.error('Error reading sessions list:', error);
       return [];
