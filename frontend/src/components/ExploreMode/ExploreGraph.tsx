@@ -617,7 +617,7 @@ export function ExploreGraph() {
     // Update edges with curved lines and better overlap handling
     const updatedEdges = edges.map((edge) => ({
       ...edge,
-      type: "bezier", // Change to smoothstep for curved edges
+      type: "default",
       animated: true,
       markerEnd: {
         type: MarkerType.ArrowClosed,
@@ -777,7 +777,7 @@ export function ExploreGraph() {
 
         return {
           ...edge,
-          type: "bezier",
+          type: "default",
           animated: true,
           markerEnd: {
             type: MarkerType.ArrowClosed,
