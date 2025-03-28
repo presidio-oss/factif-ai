@@ -15,7 +15,7 @@ export class ExploreController {
   ): Promise<void> {
     try {
       // Always reset and recreate the provider with explore mode to prevent context bleed
-      ChatService.resetProvider();
+
       ChatService.createProvider(Modes.EXPLORE);
       console.log("Explore provider created with mode: EXPLORE");
       // Get data from request body
