@@ -765,18 +765,31 @@ export class PuppeteerService extends BaseStreamingService {
   }
 
   async getCurrentUrl(): Promise<string> {
+    // Check if browser is available and return a safe default if not
     if (!PuppeteerService.page) {
-      throw new Error("Browser not launched");
+      console.log("Warning: Browser not launched when getting URL, returning empty string");
+      return "";
     }
-    let url = PuppeteerService.page.url();
-    console.log("===", url);
-    if (!url) {
-      await PuppeteerService.page.evaluate(() => {
-        url = window.location.href;
-        console.log("===>>>", url);
-      });
+    
+    try {
+      let url = PuppeteerService.page.url();
+      console.log("Current URL:", url);
+      
+      // Only try to evaluate if we couldn't get the URL and the page is available
+      if (!url && PuppeteerService.page) {
+        try {
+          url = await PuppeteerService.page.evaluate(() => window.location.href);
+          console.log("URL from evaluate:", url);
+        } catch (evalError) {
+          console.log("Error getting URL from evaluate:", evalError);
+        }
+      }
+      
+      return url || "";
+    } catch (error) {
+      console.log("Error getting current URL:", error);
+      return "";
     }
-    return url;
   }
 
   /**
