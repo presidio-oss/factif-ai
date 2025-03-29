@@ -277,164 +277,146 @@ export function ExploreGraph() {
     [],
   );
 
-  // Classify routes only when nodes are added/changed
+  // Classify routes only when nodes are added/changed or nodes first load
   useEffect(() => {
     if (!graphData?.nodes || graphData.nodes.length === 0) return;
 
-    // Check if nodes already have categories assigned
-    const needsClassification = graphData.nodes.some(
-      (node) => !node.data?.category,
+    // Get all nodes that need classification (either no category or showing as "uncategorized")
+    const nodesToClassify = graphData.nodes.filter(
+      (node) => !node.data?.category || node.data?.category === "uncategorized"
     );
 
-    if (!needsClassification) {
-      return; // Skip classification if all nodes already have categories
-    }
+    // Get all URLs from nodes, both classified and unclassified
+    // We'll check for cached classifications for all of them
+    const allUrls = graphData.nodes
+      .map((node) => node.data?.label)
+      .filter(Boolean) as string[];
+
+    if (allUrls.length === 0) return;
 
     // Add a small delay to prevent flickering during rapid updates
     const classificationTimeout = setTimeout(() => {
       const classifyNodes = async () => {
-        setIsClassifying(true);
+        // Don't set loading state if we're using all cached data
+        // This prevents nodes from briefly showing as unclassified during mode switches
+        if (nodesToClassify.length > 0) {
+          setIsClassifying(true);
+        }
 
         try {
-          // Extract URLs from nodes that need classification
-          const urls = graphData.nodes
-            .filter((node) => !node.data?.category)
-            .map((node) => node.data?.label)
-            .filter(Boolean) as string[];
+          // Default categories as fallback
+          const defaultCategories: Record<string, RouteCategory> = {
+            "/login": { category: "auth", description: "Login page" },
+            "/register": { category: "auth", description: "Registration page" },
+            "/dashboard": { category: "dashboard", description: "Main dashboard" },
+            "/profile": { category: "profile", description: "User profile" },
+            "/settings": { category: "settings", description: "User settings" },
+            "/products": { category: "product", description: "Product listing" },
+            "/": { category: "landing", description: "Homepage" },
+          };
 
-          if (urls.length === 0) return;
+          // Try to classify URLs - this now uses cache with our improved service
+          console.log("Getting classifications for URLs:", allUrls);
+          const classifications = await RouteClassifierService.classifyRoutes(allUrls);
+          
+          // Store in local state
+          setRouteCategories((prev) => ({ ...prev, ...classifications }));
 
-          console.log("Classifying URLs:", urls);
+          // Apply classifications to all nodes, preserving existing categories
+          const updatedNodes = nodes.map((node) => {
+            const url = node.data?.label as string;
+            
+            // If node already has a category and it's not "uncategorized", keep it
+            if (node.data?.category && node.data?.category !== "uncategorized") {
+              return node;
+            }
 
-          try {
-            // Use default categories if API fails
-            const defaultCategories: Record<string, RouteCategory> = {
-              "/login": { category: "auth", description: "Login page" },
-              "/register": {
-                category: "auth",
-                description: "Registration page",
+            let category, description;
+
+            // Check if we have a classification from cache/API
+            if (url && classifications[url]) {
+              category = classifications[url].category;
+              description = classifications[url].description;
+            } else {
+              // Try to match with default categories
+              for (const path in defaultCategories) {
+                if (url && url.includes(path)) {
+                  category = defaultCategories[path].category;
+                  description = defaultCategories[path].description;
+                  break;
+                }
+              }
+
+              // Use uncategorized as fallback
+              if (!category) {
+                category = "uncategorized";
+                description = "Uncategorized page";
+              }
+            }
+
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                category,
+                categoryDescription: description,
               },
-              "/dashboard": {
-                category: "dashboard",
-                description: "Main dashboard",
-              },
-              "/profile": { category: "profile", description: "User profile" },
-              "/settings": {
-                category: "settings",
-                description: "User settings",
-              },
-              "/products": {
-                category: "product",
-                description: "Product listing",
-              },
-              "/": { category: "landing", description: "Homepage" },
             };
+          });
 
-            // Try to classify URLs
-            const classifications =
-              await RouteClassifierService.classifyRoutes(urls);
-            setRouteCategories((prev) => ({ ...prev, ...classifications }));
-
-            // Update nodes with category information
-            const updatedNodes = nodes.map((node) => {
-              const url = node.data?.label as string;
-
-              // Skip if node already has a category
-              if (node.data?.category) return node;
-
-              let category, description;
-
-              // Check if we have a classification from API
-              if (url && classifications[url]) {
-                category = classifications[url].category;
-                description = classifications[url].description;
-              } else {
-                // Try to match with default categories
-                for (const path in defaultCategories) {
-                  if (url && url.includes(path)) {
-                    category = defaultCategories[path].category;
-                    description = defaultCategories[path].description;
-                    break;
-                  }
-                }
-
-                // Use uncategorized as fallback
-                if (!category) {
-                  category = "uncategorized";
-                  description = "Uncategorized page";
-                }
-              }
-
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  category,
-                  categoryDescription: description,
-                },
-              };
-            });
-
-            setNodes(updatedNodes);
-          } catch (error) {
-            console.error(
-              "API classification failed, using default categorization",
-            );
-
-            // Apply default categorization if API fails
-            const updatedNodes = nodes.map((node) => {
-              const url = node.data?.label as string;
-
-              // Skip if node already has a category
-              if (node.data?.category) return node;
-
-              let category = "uncategorized";
-              let description = "Uncategorized page";
-
-              if (url) {
-                if (
-                  url.includes("/login") ||
-                  url.includes("/signin") ||
-                  url.includes("/register")
-                ) {
-                  category = "auth";
-                  description = "Authentication page";
-                } else if (url.includes("/dashboard")) {
-                  category = "dashboard";
-                  description = "Dashboard page";
-                } else if (url.includes("/product")) {
-                  category = "product";
-                  description = "Product page";
-                } else if (url.includes("/profile")) {
-                  category = "profile";
-                  description = "Profile page";
-                } else if (url === "/" || url.endsWith(".html")) {
-                  category = "landing";
-                  description = "Landing page";
-                }
-              }
-
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  category,
-                  categoryDescription: description,
-                },
-              };
-            });
-
-            setNodes(updatedNodes);
-          }
+          setNodes(updatedNodes);
         } catch (error) {
           console.error("Error during classification process:", error);
+          
+          // Apply default categorization as fallback
+          const updatedNodes = nodes.map((node) => {
+            const url = node.data?.label as string;
+
+            // Skip if node already has a non-uncategorized category
+            if (node.data?.category && node.data?.category !== "uncategorized") {
+              return node;
+            }
+
+            let category = "uncategorized";
+            let description = "Uncategorized page";
+
+            if (url) {
+              if (url.includes("/login") || url.includes("/signin") || url.includes("/register")) {
+                category = "auth";
+                description = "Authentication page";
+              } else if (url.includes("/dashboard")) {
+                category = "dashboard";
+                description = "Dashboard page";
+              } else if (url.includes("/product")) {
+                category = "product";
+                description = "Product page";
+              } else if (url.includes("/profile")) {
+                category = "profile";
+                description = "Profile page";
+              } else if (url === "/" || url.endsWith(".html")) {
+                category = "landing";
+                description = "Landing page";
+              }
+            }
+
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                category,
+                categoryDescription: description,
+              },
+            };
+          });
+
+          setNodes(updatedNodes);
         } finally {
           setIsClassifying(false);
         }
       };
 
       classifyNodes();
-    }, 500);
+    }, 10); // Reduced delay since we're using cache
 
     return () => clearTimeout(classificationTimeout);
   }, [graphData?.nodes]);
@@ -617,7 +599,7 @@ export function ExploreGraph() {
     // Update edges with curved lines and better overlap handling
     const updatedEdges = edges.map((edge) => ({
       ...edge,
-      type: "bezier", // Change to smoothstep for curved edges
+      type: "default", // Change to smoothstep for curved edges
       animated: true,
       markerEnd: {
         type: MarkerType.ArrowClosed,
@@ -758,7 +740,7 @@ export function ExploreGraph() {
 
       // Update category containers with new positions
       setCategoryContainers(newCategoryNodes);
-    }, 200); // 200ms debounce
+    }, 10); // 200ms debounce
 
     return () => {
       if (updateTimerRef.current) {
@@ -777,7 +759,7 @@ export function ExploreGraph() {
 
         return {
           ...edge,
-          type: "bezier",
+          type: "default",
           animated: true,
           markerEnd: {
             type: MarkerType.ArrowClosed,
