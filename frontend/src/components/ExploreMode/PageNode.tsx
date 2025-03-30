@@ -31,8 +31,9 @@ export default memo(
       categoryColor: data?.categoryColor || "#607d8b", // Default gray color
     };
 
-    // Use a ref to track if this is the first render
+    // Use refs to track rendering and last timestamp
     const isFirstRender = useRef(true);
+    const lastImageTimestamp = useRef<number | undefined>(undefined);
 
     // Resolve image URL from either direct data or reference
     useEffect(() => {
@@ -41,7 +42,15 @@ export default memo(
         isFirstRender.current = false;
       }
 
-      // Reset state on data change
+      // Check if image timestamp has changed
+      const currentTimestamp = data?.imageTimestamp;
+      const hasNewImage = currentTimestamp !== lastImageTimestamp.current;
+      if (hasNewImage) {
+        console.log(`Image updated for ${data?.label}: New timestamp ${currentTimestamp}`);
+        lastImageTimestamp.current = currentTimestamp;
+      }
+
+      // Reset state on data change or when image is updated
       setImageLoaded(false);
       
       // Check for imageRef first (preferred approach)
@@ -72,7 +81,7 @@ export default memo(
       else {
         setImageError(true);
       }
-    }, [safeData.imageRef, safeData.imageData]);
+    }, [safeData.imageRef, safeData.imageData, data?.imageTimestamp]);
 
     // Handle image loading
     useEffect(() => {

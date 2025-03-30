@@ -74,6 +74,7 @@ export interface INodeData {
   edges: string[];
   imageData?: string;
   imageRef?: string;  // Reference ID for image in ImageStorageService
+  imageTimestamp?: number;  // Timestamp when the image was captured
   category?: string;
   categoryDescription?: string;
   categoryColor?: string;

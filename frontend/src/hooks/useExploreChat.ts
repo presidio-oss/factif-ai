@@ -344,7 +344,11 @@ export const useExploreChat = () => {
         {
           id: currentNodeId,
           position: { x: 200, y: currentNodelCount * 100 },
-          data: nodeData,
+          data: {
+            ...nodeData,
+            // Store the timestamp with the image so we know when it was captured
+            imageTimestamp: Date.now()
+          },
           type: "pageNode",
         }
       ]
@@ -500,30 +504,27 @@ export const useExploreChat = () => {
       if (isFirstNode) {
         console.log("After creating first node, graph state:", JSON.stringify(exploreGraphData.current));
       }
-    } else if (
-      isFirstNode &&
-      !canCreateNode.node?.data.imageData &&
-      imageData
-    ) {
-      // Special case: If we're not creating a new node because it already exists,
-      // but it's the first node and doesn't have image data, update it with the image
-      console.log("Updating first node with missing image data");
-      
-      // Create a new nodes array with updated image data
-      const newNodes = exploreGraphData.current.nodes.map(
-        (node) => {
-          if (node.id === nodeId) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                imageData,
-              },
-            };
-          }
-          return node;
-        }
-      );
+} else if (imageData) {
+  // If this URL already exists as a node but we have a new screenshot, update it
+  // This ensures nodes always have the most up-to-date screenshot
+  console.log(`Updating existing node ${nodeId} with new screenshot`);
+  
+  // Create a new nodes array with updated image data
+  const newNodes = exploreGraphData.current.nodes.map(
+    (node) => {
+      if (node.id === nodeId) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            imageData, // Always use the latest image
+            imageTimestamp: Date.now() // Update the timestamp to track when this image was captured
+          },
+        };
+      }
+      return node;
+    }
+  );
       
       // Update the ref with a new object
       exploreGraphData.current = {
@@ -823,10 +824,10 @@ export const useExploreChat = () => {
     if (nextElementToVisit) {
       setType("action");
 
-      // Use the element's saved screenshot if available, otherwise use the current page screenshot
-      // This ensures we document the state of the page when the element was found
-      const elementScreenshot = nextElementToVisit.screenshot ||imageData
-
+      // Always use the latest screenshot, not the one from when the element was discovered
+      // This ensures we have the current state of the page for navigation
+      const elementScreenshot = imageData;
+      
 
       // Include a direct instruction to take a screenshot after navigation
       const message = `In ${nextElementToVisit.url} \n Visit ${nextElementToVisit.text} on coordinate : ${nextElementToVisit.coordinates} with about this element : ${nextElementToVisit.aboutThisElement}. After clicking on this element you MUST take a screenshot by performing a click action. This screenshot is important for complete documentation of this feature.
