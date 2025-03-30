@@ -25,6 +25,7 @@ import { pruneMessages } from "@/utils/storageUtil";
 import { v4 as uuid } from "uuid";
 import { createEdgeOrNode } from "@/utils/graph.util.ts";
 import { StreamingSource } from "@/types/api.types.ts";
+import { RouteClassifierService, RouteCategory } from "@/services/routeClassifierService";
 
 export const useExploreChat = () => {
   const {
@@ -268,11 +269,72 @@ export const useExploreChat = () => {
     }
   };
 
-  const createConstructNode = (
+  const createConstructNode = async (
     currentNodeId: string,
     data: { label: string; imageData?: string },
   ) => {
     const currentNodelCount = exploreGraphData.current.nodes.length;
+    const url = data.label;
+
+    // Define a properly typed node data object with all required fields
+    interface NodeData {
+      label: string;
+      edges: string[];
+      imageData?: string;
+      category?: string;
+      categoryDescription?: string;
+    }
+    
+    // Immediately classify the new node before adding it to the graph
+    let nodeData: NodeData = {
+      label: data.label,
+      edges: [],
+      imageData: data.imageData,
+    };
+
+    try {
+      // Attempt to classify the URL immediately
+      console.log(`Classifying new node URL: ${url}`);
+      const classifications = await RouteClassifierService.classifyRoutes([url]);
+      
+      if (classifications && classifications[url]) {
+        console.log(`Got classification for ${url}:`, classifications[url]);
+        // Add category information to the node data
+        nodeData = {
+          ...nodeData,
+          category: classifications[url].category,
+          categoryDescription: classifications[url].description,
+        };
+      } else {
+        console.log(`No classification available for ${url}, using defaults`);
+        
+        // Apply default classification based on URL patterns
+        if (url.includes("/login") || url.includes("/signin") || url.includes("/register")) {
+          nodeData.category = "auth";
+          nodeData.categoryDescription = "Authentication page";
+        } else if (url.includes("/dashboard")) {
+          nodeData.category = "dashboard";
+          nodeData.categoryDescription = "Dashboard page";
+        } else if (url.includes("/product")) {
+          nodeData.category = "product";
+          nodeData.categoryDescription = "Product page";
+        } else if (url.includes("/profile")) {
+          nodeData.category = "profile";
+          nodeData.categoryDescription = "Profile page";
+        } else if (url === "/" || url.endsWith(".html")) {
+          nodeData.category = "landing";
+          nodeData.categoryDescription = "Landing page";
+        } else {
+          nodeData.category = "uncategorized";
+          nodeData.categoryDescription = "Uncategorized page";
+        }
+      }
+    } catch (error) {
+      console.error(`Error classifying new node ${url}:`, error);
+      // Default to uncategorized if classification fails
+      nodeData.category = "uncategorized";
+      nodeData.categoryDescription = "Uncategorized page";
+    }
 
     // Create a new array instead of mutating the existing one
     exploreGraphData.current = {
@@ -282,11 +344,7 @@ export const useExploreChat = () => {
         {
           id: currentNodeId,
           position: { x: 200, y: currentNodelCount * 100 },
-          data: {
-            label: data.label,
-            edges: [],
-            imageData: data.imageData,
-          },
+          data: nodeData,
           type: "pageNode",
         }
       ]
@@ -294,6 +352,7 @@ export const useExploreChat = () => {
     
     // Pass a new object reference to ensure state update is detected
     setGraphData({...exploreGraphData.current});
+    console.log(`Added node ${currentNodeId} with category ${nodeData.category}`);
     
     // Safely store graph data with error handling
     try {
