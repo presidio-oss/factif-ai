@@ -254,12 +254,56 @@ export function ExploreGraph() {
     [],
   );
 
-  const [nodes, setNodes] = useState<Node[]>(() =>
-    convertToNodes(graphData?.nodes),
-  );
-  // Also properly cast edges to ensure type compatibility
+  // State declarations with layout-aware initialization
+  const [nodes, setNodes] = useState<Node[]>(() => {
+    const initialNodes = convertToNodes(graphData?.nodes);
+    if (!initialNodes.length) return [];
+    
+    // Apply initial layout
+    const categorizedNodes = initialNodes.reduce((acc, node) => {
+      const category = (node.data?.category as string)?.toLowerCase() || "uncategorized";
+      if (!acc[category]) acc[category] = [];
+      acc[category].push(node);
+      return acc;
+    }, {} as Record<string, Node[]>);
+
+    // Position nodes in grid layout
+    const layoutedNodes: Node[] = [];
+    let yOffset = 0;
+    
+    Object.entries(categorizedNodes).forEach(([category, nodes]) => {
+      const nodesPerRow = 3;
+      const nodeWidth = 170;
+      const nodeHeight = 150;
+      const horizontalPadding = 30;
+
+      nodes.forEach((node, index) => {
+        const row = Math.floor(index / nodesPerRow);
+        const col = index % nodesPerRow;
+        layoutedNodes.push({
+          ...node,
+          position: {
+            x: col * (nodeWidth + horizontalPadding),
+            y: yOffset + row * (nodeHeight + 20)
+          }
+        });
+      });
+      
+      const rows = Math.ceil(nodes.length / nodesPerRow);
+      yOffset += rows * (nodeHeight + 20) + 150;
+    });
+
+    return layoutedNodes;
+  });
+
   const [edges, setEdges] = useState<Edge[]>(() =>
-    graphData?.edges ? ([...graphData.edges] as unknown as Edge[]) : [],
+    graphData?.edges ? graphData.edges.map(edge => ({
+      ...edge,
+      animated: true,
+      markerEnd: { type: MarkerType.ArrowClosed },
+      style: { stroke: "#555" },
+      type: "default",
+    })) as Edge[] : []
   );
 
   const onNodesChange: OnNodesChange = useCallback(
@@ -421,79 +465,96 @@ export function ExploreGraph() {
     return () => clearTimeout(classificationTimeout);
   }, [graphData?.nodes]);
 
-  // Update nodes when graphData changes
+  // Update nodes when graphData changes with immediate layout
   useEffect(() => {
-    console.log("GraphData update triggered:", {
-      hasGraphData: !!graphData,
-      nodesCount: graphData?.nodes?.length || 0,
-      edgesCount: graphData?.edges?.length || 0,
+    if (!graphData?.nodes?.length) return;
+
+    // Track if we have new nodes
+    const existingNodeIds = new Set(nodes.map(node => node.id));
+    const hasNewNodes = graphData.nodes.some(node => !existingNodeIds.has(node.id));
+
+    // Map existing categories
+    const categoryMap = new Map();
+    nodes.forEach((node) => {
+      if (node.id && node.data?.category) {
+        categoryMap.set(node.id, {
+          category: node.data.category,
+          categoryDescription: node.data.categoryDescription,
+        });
+      }
     });
 
-    if (!graphData) {
-      console.warn("No graph data available");
-      return;
-    }
+    // Convert and categorize new nodes
+    const newNodes = convertToNodes(graphData.nodes).map((node) => {
+      if (node.id && categoryMap.has(node.id)) {
+        // Preserve category info for existing nodes
+        const categoryInfo = categoryMap.get(node.id);
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            category: categoryInfo.category,
+            categoryDescription: categoryInfo.categoryDescription,
+          },
+        };
+      }
+      return node;
+    });
 
-    // Validate graph data structure
-    if (!Array.isArray(graphData.nodes) || !Array.isArray(graphData.edges)) {
-      console.error("Invalid graph data structure:", graphData);
-      return;
-    }
+    // If we have new nodes, trigger immediate layout
+    if (hasNewNodes) {
+      // Group nodes by category for layout
+      const categorizedNodes = newNodes.reduce((acc, node) => {
+        const category = (node.data?.category as string)?.toLowerCase() || "uncategorized";
+        if (!acc[category]) acc[category] = [];
+        acc[category].push(node);
+        return acc;
+      }, {} as Record<string, Node[]>);
 
-    // Track if we should update the state
-    const shouldUpdate = graphData.nodes.length > 0 || graphData.edges.length > 0;
-
-    if (shouldUpdate) {
-      console.log("Updating graph with new data references");
+      // Position nodes in grid layout
+      const layoutedNodes: Node[] = [];
+      let yOffset = 0;
       
-      // Map of current node IDs to their categories and descriptions
-      const categoryMap = new Map();
-      nodes.forEach((node) => {
-        if (node.id && node.data?.category) {
-          categoryMap.set(node.id, {
-            category: node.data.category,
-            categoryDescription: node.data.categoryDescription,
-          });
-        }
-      });
+      Object.entries(categorizedNodes).forEach(([category, nodes]) => {
+        const nodesPerRow = 3;
+        const nodeWidth = 170;
+        const nodeHeight = 150;
+        const horizontalPadding = 30;
 
-      const newNodes = convertToNodes(graphData.nodes).map((node) => {
-        if (node.id && categoryMap.has(node.id)) {
-          // Preserve category info for existing nodes
-          const categoryInfo = categoryMap.get(node.id);
-          return {
+        nodes.forEach((node, index) => {
+          const row = Math.floor(index / nodesPerRow);
+          const col = index % nodesPerRow;
+          layoutedNodes.push({
             ...node,
-            data: {
-              ...node.data,
-              category: categoryInfo.category,
-              categoryDescription: categoryInfo.categoryDescription,
-            },
-          };
-        }
-        return node;
+            position: {
+              x: col * (nodeWidth + horizontalPadding),
+              y: yOffset + row * (nodeHeight + 20)
+            }
+          });
+        });
+        
+        const rows = Math.ceil(nodes.length / nodesPerRow);
+        yOffset += rows * (nodeHeight + 20) + 150;
       });
 
-      // Create new Edge objects with consistent props
+      // Update edges with consistent styling
       const newEdges = graphData.edges
-        ? (graphData.edges.map((edge) => ({
+        ? graphData.edges.map(edge => ({
             ...edge,
             id: edge.id || `edge-${Math.random().toString(36).substr(2, 9)}`,
             animated: true,
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-            },
+            markerEnd: { type: MarkerType.ArrowClosed },
             style: { stroke: "#555" },
-          })) as unknown as Edge[])
+            type: "default",
+          })) as Edge[]
         : [];
 
-      // Set state with new object references
-      setNodes(newNodes);
+      // Apply updates immediately
+      setNodes(layoutedNodes);
       setEdges(newEdges);
-      
-      // Log detailed update info for debugging
-      console.log(`Updated graph with ${newNodes.length} nodes and ${newEdges.length} edges`);
     }
-  }, [graphData, convertToNodes]);
+
+  }, [graphData, convertToNodes, nodes]);
 
   // Completely redesigned node layout by category
   useEffect(() => {
