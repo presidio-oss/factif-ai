@@ -274,17 +274,26 @@ export const useExploreChat = () => {
   ) => {
     const currentNodelCount = exploreGraphData.current.nodes.length;
 
-    exploreGraphData.current.nodes.push({
-      id: currentNodeId,
-      position: { x: 200, y: currentNodelCount * 100 },
-      data: {
-        label: data.label,
-        edges: [],
-        imageData: data.imageData,
-      },
-      type: "pageNode",
-    });
-    setGraphData(exploreGraphData.current);
+    // Create a new array instead of mutating the existing one
+    exploreGraphData.current = {
+      ...exploreGraphData.current,
+      nodes: [
+        ...exploreGraphData.current.nodes,
+        {
+          id: currentNodeId,
+          position: { x: 200, y: currentNodelCount * 100 },
+          data: {
+            label: data.label,
+            edges: [],
+            imageData: data.imageData,
+          },
+          type: "pageNode",
+        }
+      ]
+    };
+    
+    // Pass a new object reference to ensure state update is detected
+    setGraphData({...exploreGraphData.current});
     
     // Safely store graph data with error handling
     try {
@@ -301,20 +310,41 @@ export const useExploreChat = () => {
     edgeId: string,
     label: string,
   ) => {
-    exploreGraphData.current.edges.push({
-      id: edgeId,
-      source: sourceId,
-      target: targetId,
-      sourceHandle: edgeId,
-      type: "default",
-      label,
-    });
-    exploreGraphData.current.nodes.map((node) => {
-      if (node.id === sourceId) {
-        node.data.edges = [...node.data.edges, edgeId];
+    // Create a new edges array
+    const newEdges = [
+      ...exploreGraphData.current.edges,
+      {
+        id: edgeId,
+        source: sourceId,
+        target: targetId,
+        sourceHandle: edgeId,
+        type: "default",
+        label,
       }
+    ];
+    
+    // Create a new nodes array with updated edges
+    const newNodes = exploreGraphData.current.nodes.map((node) => {
+      if (node.id === sourceId) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            edges: [...node.data.edges, edgeId]
+          }
+        };
+      }
+      return node;
     });
-    setGraphData(exploreGraphData.current);
+    
+    // Update the ref with completely new objects
+    exploreGraphData.current = {
+      nodes: newNodes,
+      edges: newEdges
+    };
+    
+    // Pass a new object reference to ensure state update is detected
+    setGraphData({...exploreGraphData.current});
     
     // Safely store graph data with error handling
     try {
@@ -334,7 +364,8 @@ export const useExploreChat = () => {
         if (exploreGraphData.current?.nodes?.length > 0) {
           console.log("Periodic graph data persistence:", 
                      exploreGraphData.current.nodes.length, "nodes");
-          setGraphData(exploreGraphData.current);
+          // Create a new object reference to ensure state update is detected
+          setGraphData({...exploreGraphData.current});
           
           try {
             localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
@@ -347,7 +378,7 @@ export const useExploreChat = () => {
       
       return () => clearInterval(persistenceInterval);
     }
-  }, [exploreGraphData.current?.nodes?.length, setGraphData]);
+  }, [setGraphData]); // Don't depend on exploreGraphData.current to avoid infinite re-renders
 
   const handleEdgeAndNodeCreation = (
     url: string,
@@ -418,7 +449,9 @@ export const useExploreChat = () => {
       // Special case: If we're not creating a new node because it already exists,
       // but it's the first node and doesn't have image data, update it with the image
       console.log("Updating first node with missing image data");
-      exploreGraphData.current.nodes = exploreGraphData.current.nodes.map(
+      
+      // Create a new nodes array with updated image data
+      const newNodes = exploreGraphData.current.nodes.map(
         (node) => {
           if (node.id === nodeId) {
             return {
@@ -430,9 +463,17 @@ export const useExploreChat = () => {
             };
           }
           return node;
-        },
+        }
       );
-      setGraphData(exploreGraphData.current);
+      
+      // Update the ref with a new object
+      exploreGraphData.current = {
+        ...exploreGraphData.current,
+        nodes: newNodes
+      };
+      
+      // Pass a new object reference to ensure state update is detected
+      setGraphData({...exploreGraphData.current});
     }
 
     if (currentlyExploring.current) {
@@ -585,7 +626,16 @@ export const useExploreChat = () => {
       }
     }
 
+    // Create a new array to ensure reactivity when updating routes
     exploreRoute.current = [...routeSet];
+    
+    // After any processing is done, ensure graph data is properly updated
+    if (exploreGraphData.current.nodes.length > 0) {
+      // Force a re-render of the graph by passing a new object reference
+      setGraphData({...exploreGraphData.current});
+      console.log("Graph data updated with", exploreGraphData.current.nodes.length, "nodes");
+    }
+    
     return processedExploreMessage.length > 0
       ? processedExploreMessage[0]
       : null;
@@ -1027,9 +1077,18 @@ export const useExploreChat = () => {
         console.log("Graph data nodes count:", validGraphData.nodes.length);
         console.log("Graph data edges count:", validGraphData.edges.length);
         
-        // Update the ref and context
-        exploreGraphData.current = validGraphData;
-        setGraphData(validGraphData);
+        // Create new object references for all graph data to ensure reactivity
+        const reactiveGraphData = {
+          nodes: validGraphData.nodes.map(node => ({...node, data: {...node.data}})),
+          edges: validGraphData.edges.map(edge => ({...edge}))
+        };
+        
+        // Update the ref and context with new object references
+        exploreGraphData.current = reactiveGraphData;
+        setGraphData({...reactiveGraphData});
+        
+        // Log an explicit message about graph data reactivity
+        console.log("Loaded graph data with new reactive references");
       } else {
         console.log("No valid graph data in session, initializing empty graph");
         exploreGraphData.current = { nodes: [], edges: [] };

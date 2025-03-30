@@ -440,46 +440,59 @@ export function ExploreGraph() {
       return;
     }
 
-    // Map of current node IDs to their categories and descriptions
-    const categoryMap = new Map();
-    nodes.forEach((node) => {
-      if (node.id && node.data?.category) {
-        categoryMap.set(node.id, {
-          category: node.data.category,
-          categoryDescription: node.data.categoryDescription,
-        });
-      }
-    });
+    // Track if we should update the state
+    const shouldUpdate = graphData.nodes.length > 0 || graphData.edges.length > 0;
 
-    const newNodes = convertToNodes(graphData.nodes).map((node) => {
-      if (node.id && categoryMap.has(node.id)) {
-        // Preserve category info for existing nodes
-        const categoryInfo = categoryMap.get(node.id);
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            category: categoryInfo.category,
-            categoryDescription: categoryInfo.categoryDescription,
-          },
-        };
-      }
-      return node;
-    });
+    if (shouldUpdate) {
+      console.log("Updating graph with new data references");
+      
+      // Map of current node IDs to their categories and descriptions
+      const categoryMap = new Map();
+      nodes.forEach((node) => {
+        if (node.id && node.data?.category) {
+          categoryMap.set(node.id, {
+            category: node.data.category,
+            categoryDescription: node.data.categoryDescription,
+          });
+        }
+      });
 
-    setNodes(newNodes);
-    setEdges(
-      graphData.edges
+      const newNodes = convertToNodes(graphData.nodes).map((node) => {
+        if (node.id && categoryMap.has(node.id)) {
+          // Preserve category info for existing nodes
+          const categoryInfo = categoryMap.get(node.id);
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              category: categoryInfo.category,
+              categoryDescription: categoryInfo.categoryDescription,
+            },
+          };
+        }
+        return node;
+      });
+
+      // Create new Edge objects with consistent props
+      const newEdges = graphData.edges
         ? (graphData.edges.map((edge) => ({
             ...edge,
+            id: edge.id || `edge-${Math.random().toString(36).substr(2, 9)}`,
             animated: true,
             markerEnd: {
               type: MarkerType.ArrowClosed,
             },
             style: { stroke: "#555" },
           })) as unknown as Edge[])
-        : [],
-    );
+        : [];
+
+      // Set state with new object references
+      setNodes(newNodes);
+      setEdges(newEdges);
+      
+      // Log detailed update info for debugging
+      console.log(`Updated graph with ${newNodes.length} nodes and ${newEdges.length} edges`);
+    }
   }, [graphData, convertToNodes]);
 
   // Completely redesigned node layout by category
