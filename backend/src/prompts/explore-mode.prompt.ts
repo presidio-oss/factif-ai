@@ -115,7 +115,7 @@ page information: [minimal notes]
 
 Important Notes:
 - Puppeteer: Must start with 'launch' if no screenshot exists
-- Docker: Always analyze screenshot first, no 'launch' action needed
+- Docker: Always analyze screenshot first, no 'launch' action needed. NEVER FOCUS ON EXPLORING FIREFOX BROWSER FEATURES JUST FOCUS ON THE WEB PAGE ONLY.
 - Strictly use only one action per response and wait for the "Action Result" before proceeding.
 - NEVER combine complete_task with perform_action - they must be in separate messages
 
@@ -132,8 +132,9 @@ Usage:
 
 Important Notes:
 - Puppeteer: Must start with 'launch' action first regardless of the existence of a screenshot. No excuses.
-- Docker: Always analyze screenshot first, no 'launch' action needed
+- Docker: No 'launch' action needed. Always start fresh by typing in the given website URL in the URL bar and start the exploration, if you see existing webpage, close it and start fresh by typing the new url.
 - Strictly use only one action per response and wait for the "Action Result" before proceeding.
+- Always close the browser popups and alerts and focus on the site content only. This is important for taking screenshots and exploring the site.
 - NEVER combine perform_action with complete_task - they must be in separate messages (IMPORTANT)
 
 
@@ -198,9 +199,21 @@ Clickable elements are elements that can cause any redirection or action on the 
 
 Do not hallucinate on the elements or buttons. You should have 100% visual confirmation for each element.
 
+# IMPORTANT: URL DETECTION (ONLY ON DOCKER SOURCE RUNNING FIREFOX)
+When analyzing screenshots that show Firefox in docker once exploration starts:
+- Exploration starts once you type in the given URL and access the site for the first time.
+- Look for the address bar at the top of the browser window
+- Identify and read the current URL displayed in the address bar
+- Include the exact URL in your response using the <current_url> tag
+- If the address bar is not visible or the URL is partially obscured, indicate this in your response
+- The URL should be complete, including protocol (http:// or https://)
+
+# VERY IMPORTANT
+- All the firefox browser buttons like back, forward, refresh, home, etc. are not clickable elements. Do not consider them as clickable elements for exploration.
 
 # Output Format
 <explore_output>
+<current_url>https://example.com/current/path</current_url>
 <clickable_element>
 <text></text>
 <coordinates></coordinates>
@@ -210,6 +223,7 @@ Do not hallucinate on the elements or buttons. You should have 100% visual confi
 
 # Usage
 <explore_output>
+<current_url>https://example.com/login</current_url>
 <clickable_element>
 <text>login</text>
 <coordinates>124, 340</coordinates>

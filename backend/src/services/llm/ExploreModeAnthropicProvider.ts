@@ -17,6 +17,7 @@ import {
 import {
   getCurrentUrlBasedOnSource,
   logMessageRequest,
+  extractAndStoreUrlFromResponse,
 } from "../../utils/common.util";
 import { getLatestScreenshot } from "../../utils/screenshotUtils";
 import { IProcessedScreenshot, OmniParserResponse } from "../interfaces/BrowserService";
@@ -158,16 +159,30 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
   async processStreamResponse(
     stream: any,
     res: Response,
-    imageData?: IProcessedScreenshot
+    imageData?: IProcessedScreenshot,
+    source?: StreamingSource
   ): Promise<void> {
+    let completeResponse = '';
+    
+    // Collect the complete response while streaming chunks
     for await (const chunk of stream) {
       if (chunk.type === "content_block_delta" && chunk.delta?.text) {
+        // Accumulate the complete response
+        completeResponse += chunk.delta.text;
+        
         this.sendStreamResponse(res, {
           message: chunk.delta.text,
           timestamp: Date.now(),
         });
       }
     }
+    
+    // Once streaming is done, extract URL from the complete response if source is docker
+    if (source === 'ubuntu-docker-vnc' && completeResponse) {
+      // Use the utility function to extract and store URL
+      extractAndStoreUrlFromResponse(source, completeResponse);
+    }
+    
     this.sendStreamResponse(res, {
       message: "",
       timestamp: Date.now(),
@@ -299,7 +314,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       logMessageRequest(messageRequest);
 
       const stream = await this.client.messages.create(messageRequest);
-      await this.processStreamResponse(stream, res, imageData);
+      await this.processStreamResponse(stream, res, imageData, source);
       return true;
     } catch (error) {
       console.log(error);

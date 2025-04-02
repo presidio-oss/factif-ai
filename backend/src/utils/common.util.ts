@@ -10,6 +10,32 @@ import {
 } from "../services/interfaces/BrowserService";
 import { convertElementsToInput } from "./prompt.util";
 
+// Store the last detected URL for each source
+const lastDetectedUrls: Record<string, string> = {};
+
+/**
+ * Extract URL from explore mode response and store it
+ * @param source The streaming source
+ * @param response The explore mode response
+ */
+export function extractAndStoreUrlFromResponse(source: StreamingSource, response: string): void {
+  if (source !== 'ubuntu-docker-vnc') return;
+  
+  try {
+    // Extract URL using regex
+    const urlMatch = response.match(/<current_url>(.*?)<\/current_url>/);
+    if (urlMatch && urlMatch[1]) {
+      const extractedUrl = urlMatch[1].trim();
+      if (extractedUrl && extractedUrl.startsWith('http')) {
+        console.log(`Extracted URL from response: ${extractedUrl}`);
+        lastDetectedUrls[source] = extractedUrl;
+      }
+    }
+  } catch (error) {
+    console.error('Error extracting URL from response:', error);
+  }
+}
+
 /**
  * Logs the provided message request to a JSON file in the logs directory.
  *
@@ -56,22 +82,9 @@ export async function getCurrentUrlBasedOnSource(source: StreamingSource) {
       return "";
     }
   } else if (source === "ubuntu-docker-vnc") {
-    try {
-      //   const containerName = "factif-vnc";
-      //   const containerStatus =
-      //     await DockerCommands.checkContainerStatus(containerName);
-      //   console.log("containerStatus", containerStatus);
-      //   if (
-      //     containerStatus.exists &&
-      //     containerStatus.running &&
-      //     containerStatus.id
-      //   ) {
-      pageUrl = "IDENTIFY URL FROM SCREENSHOT";
-      console.log("Docker VNC URL:", pageUrl);
-      // }
-    } catch (error) {
-      console.log("No active Docker VNC session");
-    }
+    // Use the last detected URL from explore mode responses
+    pageUrl = lastDetectedUrls[source] || "";
+    console.log("Docker VNC URL from explore response:", pageUrl);
   }
   return pageUrl;
 }
