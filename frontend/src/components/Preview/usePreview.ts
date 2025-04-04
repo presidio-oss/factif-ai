@@ -52,16 +52,29 @@ export const usePreview = () => {
     }
   };
 
-  const handleBackNavigation = () => {
+  const handleBackNavigation = async () => {
     if (urlHistory.length > 1 && streamingSource === 'chrome-puppeteer') {
-      const newHistory = [...urlHistory];
-      newHistory.pop();
-      const previousUrl = newHistory[newHistory.length - 1];
-      setCurrentUrl(previousUrl);
-      setUrlInput(previousUrl);
-      setUrlHistory(newHistory);
-      const browserService = UIInteractionService.getInstance();
-      browserService.handleSourceChange(streamingSource, previousUrl);
+      // Use the browser's native back functionality instead of restarting the browser
+      try {
+        const browserService = UIInteractionService.getInstance();
+        
+        // Call the new back navigation method
+        await browserService.handleBackNavigation();
+        
+        // We'll update the URL and history from the URL change event, but prepare
+        // our local state in case the event doesn't arrive
+        const newHistory = [...urlHistory];
+        newHistory.pop();
+        const previousUrl = newHistory[newHistory.length - 1];
+        
+        // Set placeholder values in case the URL change event doesn't update them
+        setCurrentUrl(previousUrl);
+        setUrlInput(previousUrl);
+        setUrlHistory(newHistory);
+      } catch (error) {
+        console.error("Failed to navigate back:", error);
+        consoleService.getInstance().emitConsoleEvent('error', `Back navigation failed: ${error}`);
+      }
     }
   };
 
@@ -69,10 +82,18 @@ export const usePreview = () => {
     if (!interactiveMode || !previewRef.current || !imageRef.current || streamingSource !== 'chrome-puppeteer') return;
 
     if ('nativeEvent' in event && event.nativeEvent instanceof MouseEvent) {
-      UIInteractionService.getInstance().handleMouseInteraction(
-        event as React.MouseEvent,
-        imageRef.current
-      );
+      // For mousemove events, use handleHoverInteraction
+      if (event.type === 'mousemove') {
+        UIInteractionService.getInstance().handleHoverInteraction(
+          event as React.MouseEvent,
+          imageRef.current
+        );
+      } else {
+        UIInteractionService.getInstance().handleMouseInteraction(
+          event as React.MouseEvent,
+          imageRef.current
+        );
+      }
     } else if ('nativeEvent' in event && event.nativeEvent instanceof KeyboardEvent) {
       UIInteractionService.getInstance().handleKeyboardInteraction(
         event as React.KeyboardEvent
@@ -139,9 +160,19 @@ export const usePreview = () => {
       const browserService = UIInteractionService.getInstance();
       
       const unsubscribe = browserService.onUrlChange((newUrl: string) => {
+        // Ensure we're getting the complete URL including path and query params
         setCurrentUrl(newUrl);
         setUrlInput(newUrl);
-        setUrlHistory(prev => [...prev, newUrl]);
+        
+        // Only add to history if it's a new URL to avoid duplicates
+        setUrlHistory(prev => {
+          // Don't add duplicate URLs to history
+          const lastUrl = prev[prev.length - 1];
+          if (lastUrl !== newUrl) {
+            return [...prev, newUrl];
+          }
+          return prev;
+        });
       });
 
       return () => {

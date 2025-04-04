@@ -43,12 +43,20 @@ export class MessageProcessor {
           let urlMatch = chunk.match(/(https?:\/\/[^\s'"]+)/i);
           
           // If no http/https URL, try to detect domain names like example.com
+          // Use negative lookbehind (?<!@) to avoid matching domains in email addresses
           if (!urlMatch) {
-            urlMatch = chunk.match(/\b([a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)[^\s'"]*)\b/i);
+            urlMatch = chunk.match(/(?<!@)\b([a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)[^\s'"]*)\b/i);
             if (urlMatch) {
               // Prepend https:// to the domain
               urlMatch[1] = `https://${urlMatch[1]}`;
             }
+          }
+          
+          // Skip auto-launching if we're in a type action for an email field
+          if (action.action === "type" && 
+              (action.text?.includes("@") || 
+               /email|mail|e-mail/i.test(chunk))) {
+            urlMatch = null;
           }
           if (urlMatch && urlMatch[1]) {
             console.log("Auto-launching browser with URL:", urlMatch[1]);

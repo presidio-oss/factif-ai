@@ -14,6 +14,7 @@ export class DockerCommands {
     return new Promise((resolve, reject) => {
       const docker = spawn("docker", command);
       let output = "";
+      let errorOutput = "";
 
       docker.stdout.on("data", (data) => {
         output += data.toString();
@@ -21,6 +22,7 @@ export class DockerCommands {
 
       docker.stderr.on("data", (data) => {
         const error = data.toString();
+        errorOutput += error;
         if (errorMessage) {
           console.error(`${errorMessage}: ${error}`);
         }
@@ -33,14 +35,37 @@ export class DockerCommands {
           }
           resolve(output.trim());
         } else {
-          reject(new Error(`Command failed with code ${code}`));
+          // Check common patterns that suggest Docker isn't running
+          const isDockerNotRunning =
+            output.includes("Cannot connect to the Docker daemon") ||
+            output.includes("Is the docker daemon running") ||
+            output.includes("docker daemon is not running") ||
+            output.includes("connection refused") ||
+            errorOutput.includes("Cannot connect to the Docker daemon") ||
+            errorOutput.includes("Is the docker daemon running") ||
+            errorOutput.includes("docker daemon is not running") ||
+            errorOutput.includes("connection refused");
+
+          if (isDockerNotRunning) {
+            console.log(
+              "\n============================================================================="
+            );
+            console.log(
+              "DOCKER NOT RUNNING - Ubuntu VNC feature requires Docker to be running locally"
+            );
+            console.log(
+              "=============================================================================\n"
+            );
+          } else {
+            reject(new Error(`Command failed with code ${code}`));
+          }
         }
       });
     });
   }
 
   static async checkContainerStatus(
-    containerName: string,
+    containerName: string
   ): Promise<ContainerStatus> {
     const command = [
       "ps",
@@ -85,9 +110,9 @@ export class DockerCommands {
         command: ["exec", containerId, "env"],
         successMessage: "Retrieved container environment",
       });
-      
+
       console.log(`Container environment: ${envOutput}`);
-      
+
       if (!envOutput.includes("DISPLAY=")) {
         console.log("DISPLAY not set in environment, setting it explicitly");
         await this.executeCommand({
@@ -102,20 +127,32 @@ export class DockerCommands {
     // Explicitly restart Xvfb to ensure it's running with our settings
     try {
       console.log("Preparing X server environment...");
-      
+
       // Check if /tmp/.X11-unix exists and has proper permissions
       await this.executeCommand({
-        command: ["exec", containerId, "bash", "-c", "mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix"],
-        successMessage: "Prepared X11 socket directory"
+        command: [
+          "exec",
+          containerId,
+          "bash",
+          "-c",
+          "mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix",
+        ],
+        successMessage: "Prepared X11 socket directory",
       });
-      
+
       // Clean up any stale X lock files that might be causing issues
       console.log("Cleaning up any stale X server files...");
       await this.executeCommand({
-        command: ["exec", containerId, "bash", "-c", "rm -f /tmp/.X99-lock /tmp/.X11-unix/X99"],
-        successMessage: "Cleaned up stale X server files"
+        command: [
+          "exec",
+          containerId,
+          "bash",
+          "-c",
+          "rm -f /tmp/.X99-lock /tmp/.X11-unix/X99",
+        ],
+        successMessage: "Cleaned up stale X server files",
       });
-      
+
       // Kill any existing Xvfb processes to ensure clean state
       console.log("Killing any existing Xvfb processes...");
       await this.executeCommand({
@@ -128,37 +165,51 @@ export class DockerCommands {
       // Create log directory for Xvfb
       await this.executeCommand({
         command: ["exec", containerId, "mkdir", "-p", "/tmp/xvfb_logs"],
-        successMessage: "Created Xvfb log directory"
+        successMessage: "Created Xvfb log directory",
       });
 
       console.log("Starting Xvfb with detailed logging...");
       // Start Xvfb with proper environment variables and logging
       const xvfbOutput = await this.executeCommand({
         command: [
-          "exec", 
-          "-e", "DISPLAY=:99", 
-          "-e", "DISPLAY_NUM=99", 
-          "-e", "WIDTH=1280", 
-          "-e", "HEIGHT=720", 
-          containerId, 
-          "/bin/bash", 
+          "exec",
+          "-e",
+          "DISPLAY=:99",
+          "-e",
+          "DISPLAY_NUM=99",
+          "-e",
+          "WIDTH=1280",
+          "-e",
+          "HEIGHT=720",
+          containerId,
+          "/bin/bash",
           "-c",
-          "cd /app && ./xvfb_startup.sh"
+          "cd /app && ./xvfb_startup.sh",
         ],
-        successMessage: "Started Xvfb"
+        successMessage: "Started Xvfb",
       });
-      
+
       console.log("Xvfb startup output:", xvfbOutput);
-      
+
       // Check if the marker file exists to indicate successful startup
       try {
         await this.executeCommand({
-          command: ["exec", containerId, "test", "-f", "/tmp/xvfb_started_successfully"],
+          command: [
+            "exec",
+            containerId,
+            "test",
+            "-f",
+            "/tmp/xvfb_started_successfully",
+          ],
         });
-        console.log("Xvfb startup marker file found - X server started successfully");
+        console.log(
+          "Xvfb startup marker file found - X server started successfully"
+        );
       } catch (e) {
-        console.warn("Xvfb startup marker file not found - may indicate startup issues");
-        
+        console.warn(
+          "Xvfb startup marker file not found - may indicate startup issues"
+        );
+
         // Tail the Xvfb log file to see what happened
         try {
           const xvfbLog = await this.executeCommand({
@@ -169,7 +220,7 @@ export class DockerCommands {
           console.error("Could not read Xvfb logs:", logError);
         }
       }
-      
+
       // Give Xvfb time to fully initialize even if marker file exists
       console.log("Waiting for Xvfb to fully initialize...");
       await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -197,20 +248,24 @@ export class DockerCommands {
         console.log("X server is ready");
         break;
       } catch (error) {
-        errorMessages.push(error instanceof Error ? error.message : String(error));
+        errorMessages.push(
+          error instanceof Error ? error.message : String(error)
+        );
         retries--;
         if (retries === 0) {
           console.error("X server check error logs:", errorMessages.join("\n"));
-          throw new Error("X server failed to start: Check for missing display or permissions issues");
+          throw new Error(
+            "X server failed to start: Check for missing display or permissions issues"
+          );
         }
         // Log every 10 seconds
         if (retries % 10 === 0) {
           console.log(`Still waiting for X server, ${retries} attempts left`);
-          
+
           // Try to get diagnostic information
           try {
             const ps = await this.executeCommand({
-              command: ["exec", containerId, "bash", "-c", "ps aux | grep X"]
+              command: ["exec", containerId, "bash", "-c", "ps aux | grep X"],
             });
             console.log("X process status:", ps);
           } catch (e) {
@@ -224,69 +279,75 @@ export class DockerCommands {
     // Start window manager and panel
     try {
       console.log("Starting window manager and panel...");
-      
+
       // Start mutter window manager with additional environment variables to prevent X11 warnings
       await this.executeCommand({
         command: [
-          "exec", 
-          "-d", 
-          "-e", "DISPLAY=:99", 
-          "-e", "MUTTER_DEBUG=0",  // Suppress debug output
-          "-e", "MUTTER_VERBOSE=0",  // Suppress verbose messages
-          containerId, 
-          "/bin/bash", 
+          "exec",
+          "-d",
+          "-e",
+          "DISPLAY=:99",
+          "-e",
+          "MUTTER_DEBUG=0", // Suppress debug output
+          "-e",
+          "MUTTER_VERBOSE=0", // Suppress verbose messages
+          containerId,
+          "/bin/bash",
           "-c",
-          "cd /app && ./mutter_startup.sh"
+          "cd /app && ./mutter_startup.sh",
         ],
-        successMessage: "Started mutter window manager"
+        successMessage: "Started mutter window manager",
       });
-      
+
       // Give mutter time to initialize
       await new Promise((resolve) => setTimeout(resolve, 2000));
-      
+
       // Start tint2 panel
       await this.executeCommand({
         command: [
-          "exec", 
-          "-d", 
-          "-e", "DISPLAY=:99", 
-          containerId, 
-          "/bin/bash", 
+          "exec",
+          "-d",
+          "-e",
+          "DISPLAY=:99",
+          containerId,
+          "/bin/bash",
           "-c",
-          "cd /app && ./tint2_startup.sh"
+          "cd /app && ./tint2_startup.sh",
         ],
-        successMessage: "Started tint2 panel"
+        successMessage: "Started tint2 panel",
       });
-      
+
       // Give tint2 time to initialize
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      
+
       // Start PCManFM for desktop icons using the dedicated script
       await this.executeCommand({
         command: [
-          "exec", 
-          "-d", 
-          "-e", "DISPLAY=:99",
-          "-e", "HOME=/home/computeruse", // Ensure HOME is set correctly for config
-          containerId, 
+          "exec",
+          "-d",
+          "-e",
+          "DISPLAY=:99",
+          "-e",
+          "HOME=/home/computeruse", // Ensure HOME is set correctly for config
+          containerId,
           "/bin/bash",
           "-c",
-          "cd /app && chmod +x ./pcmanfm_startup.sh && ./pcmanfm_startup.sh"
+          "cd /app && chmod +x ./pcmanfm_startup.sh && ./pcmanfm_startup.sh",
         ],
-        successMessage: "Started desktop manager"
+        successMessage: "Started desktop manager",
       });
-      
+
       // Give PCManFM time to initialize
       await new Promise((resolve) => setTimeout(resolve, 1000));
     } catch (error) {
       console.error("Failed to start window manager and panel:", error);
       // Continue even if window manager fails, as VNC might still work
     }
-    
+
     // Restart VNC services
     try {
       console.log("Starting VNC services...");
-      
+
       // Kill any existing VNC processes
       await this.executeCommand({
         command: ["exec", containerId, "pkill", "-f", "x11vnc"],
@@ -383,37 +444,39 @@ export class DockerCommands {
       return false;
     }
   }
-  
-  static async checkServiceDetailed(containerId: string): Promise<{ vncReady: boolean, noVncReady: boolean }> {
+
+  static async checkServiceDetailed(
+    containerId: string
+  ): Promise<{ vncReady: boolean; noVncReady: boolean }> {
     try {
       const output = await this.executeCommand({
         command: ["exec", containerId, "netstat", "-tuln"],
       });
-      
+
       const vncReady = output.includes(":5900");
       const noVncReady = output.includes(":6080");
-      
+
       return {
         vncReady,
-        noVncReady
+        noVncReady,
       };
     } catch (error) {
       console.error("Failed to check service status:", error);
       return {
         vncReady: false,
-        noVncReady: false
+        noVncReady: false,
       };
     }
   }
 
   static async takeScreenshot(
     containerId: string,
-    screenshotPath: string,
+    screenshotPath: string
   ): Promise<string> {
     const tempDir = os.tmpdir();
     const tempScreenshotPath = path.join(
       tempDir,
-      `screenshot-${Date.now()}.png`,
+      `screenshot-${Date.now()}.png`
     );
 
     try {

@@ -17,6 +17,7 @@ import {
 import {
   getCurrentUrlBasedOnSource,
   logMessageRequest,
+  extractAndStoreUrlFromResponse,
 } from "../../utils/common.util";
 import { getLatestScreenshot } from "../../utils/screenshotUtils";
 import { IProcessedScreenshot, OmniParserResponse } from "../interfaces/BrowserService";
@@ -158,16 +159,30 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
   async processStreamResponse(
     stream: any,
     res: Response,
-    imageData?: IProcessedScreenshot
+    imageData?: IProcessedScreenshot,
+    source?: StreamingSource
   ): Promise<void> {
+    let completeResponse = '';
+    
+    // Collect the complete response while streaming chunks
     for await (const chunk of stream) {
       if (chunk.type === "content_block_delta" && chunk.delta?.text) {
+        // Accumulate the complete response
+        completeResponse += chunk.delta.text;
+        
         this.sendStreamResponse(res, {
           message: chunk.delta.text,
           timestamp: Date.now(),
         });
       }
     }
+    
+    // Once streaming is done, extract URL from the complete response if source is docker
+    if (source === 'ubuntu-docker-vnc' && completeResponse) {
+      // Use the utility function to extract and store URL
+      extractAndStoreUrlFromResponse(source, completeResponse);
+    }
+    
     this.sendStreamResponse(res, {
       message: "",
       timestamp: Date.now(),
@@ -258,9 +273,27 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     try {
       console.log(omniParserResult);
       const modelId = this.getModelId();
-      // const currentPageUrl = await getCurrentUrlBasedOnSource(
-      //   source as StreamingSource
-      // );
+      
+      // Get currentPageUrl safely with fallback - critical change to prevent errors
+      let currentPageUrl = "";
+      try {
+        // Only try to get URL if it's the Puppeteer source and we've verified browser is ready
+        if (source === "chrome-puppeteer") {
+          const puppeteerService = new PuppeteerService({ io: null as any });
+          const browserReady = await puppeteerService.hasBrowserInstance();
+          
+          if (browserReady) {
+            currentPageUrl = await getCurrentUrlBasedOnSource(source);
+          } else {
+            console.log("Browser not ready yet, using empty URL as fallback");
+          }
+        } else if (source) {
+          currentPageUrl = await getCurrentUrlBasedOnSource(source);
+        }
+      } catch (urlError) {
+        console.error("Error getting current page URL:", urlError);
+        // Continue with empty URL rather than failing completely
+      }
 
       // Format messages with history and image if present
       const formattedMessage = this.formatMessagesWithHistory(
@@ -270,7 +303,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
         source,
         mode,
         type,
-        ""
+        currentPageUrl
       );
 
       const messageRequest = this.buildMessageRequest(
@@ -281,7 +314,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       logMessageRequest(messageRequest);
 
       const stream = await this.client.messages.create(messageRequest);
-      await this.processStreamResponse(stream, res, imageData);
+      await this.processStreamResponse(stream, res, imageData, source);
       return true;
     } catch (error) {
       console.log(error);
@@ -349,8 +382,35 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
   async generateComponentDescription(
     source: StreamingSource
   ): Promise<boolean> {
-    let pageUrl = await getCurrentUrlBasedOnSource(source);
-    let screenshot = await getLatestScreenshot(source);
+    // Check if browser is ready when using Puppeteer to prevent premature operations
+    let browserReady = true;
+    if (source === "chrome-puppeteer") {
+      const puppeteerService = new PuppeteerService({ io: null as any });
+      browserReady = await puppeteerService.hasBrowserInstance();
+      
+      if (!browserReady) {
+        console.log("Browser not ready yet for documentation generation, skipping");
+        return false;
+      }
+    }
+
+    // Get page URL and screenshot with proper error handling
+    let pageUrl = "";
+    let screenshot;
+    
+    try {
+      pageUrl = await getCurrentUrlBasedOnSource(source);
+      screenshot = await getLatestScreenshot(source);
+      
+      // Verify we have the necessary data
+      if (!pageUrl || !screenshot || !screenshot.originalImage) {
+        console.log("Missing required data for documentation generation, skipping");
+        return false;
+      }
+    } catch (error) {
+      console.error("Error preparing data for documentation:", error);
+      return false;
+    }
 
     // Check if this URL is already visited
     if (ExploreModeAnthropicProvider.pageRouter.has(pageUrl)) return false;

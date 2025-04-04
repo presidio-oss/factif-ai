@@ -4,8 +4,37 @@ import { StreamingSource } from "../types/stream.types";
 import { PuppeteerActions } from "../services/implementations/puppeteer/PuppeteerActions";
 import { DockerCommands } from "../services/implementations/docker/DockerCommands";
 import { DockerActions } from "../services/implementations/docker/DockerActions";
-import { IClickableElement, OmniParserResponse } from "../services/interfaces/BrowserService";
+import {
+  IClickableElement,
+  OmniParserResponse,
+} from "../services/interfaces/BrowserService";
 import { convertElementsToInput } from "./prompt.util";
+
+// Store the last detected URL for each source
+const lastDetectedUrls: Record<string, string> = {};
+
+/**
+ * Extract URL from explore mode response and store it
+ * @param source The streaming source
+ * @param response The explore mode response
+ */
+export function extractAndStoreUrlFromResponse(source: StreamingSource, response: string): void {
+  if (source !== 'ubuntu-docker-vnc') return;
+  
+  try {
+    // Extract URL using regex
+    const urlMatch = response.match(/<current_url>(.*?)<\/current_url>/);
+    if (urlMatch && urlMatch[1]) {
+      const extractedUrl = urlMatch[1].trim();
+      if (extractedUrl && extractedUrl.startsWith('http')) {
+        console.log(`Extracted URL from response: ${extractedUrl}`);
+        lastDetectedUrls[source] = extractedUrl;
+      }
+    }
+  } catch (error) {
+    console.error('Error extracting URL from response:', error);
+  }
+}
 
 /**
  * Logs the provided message request to a JSON file in the logs directory.
@@ -31,34 +60,38 @@ export function logMessageRequest(messageRequest: any): void {
   }
 }
 
-
 export async function getCurrentUrlBasedOnSource(source: StreamingSource) {
   let pageUrl = "";
-  console.log("coming here");
+  console.log("Getting URL for source:", source);
+
   if (source === "chrome-puppeteer") {
-    pageUrl = await PuppeteerActions.getCurrentUrl();
-  } else if (source === "ubuntu-docker-vnc") {
     try {
-      const containerName = "factif-vnc";
-      const containerStatus =
-        await DockerCommands.checkContainerStatus(containerName);
-      console.log("containerStatus", containerStatus);
-      if (
-        containerStatus.exists &&
-        containerStatus.running &&
-        containerStatus.id
-      ) {
-        pageUrl = await DockerActions.getUrl(containerStatus.id);
-        console.log("pageUrl", pageUrl);
+      // Check if browser is ready
+      const isBrowserReady = await PuppeteerActions.isBrowserReady();
+      if (isBrowserReady) {
+        pageUrl = await PuppeteerActions.getCurrentUrl();
+        console.log("Retrieved Puppeteer URL:", pageUrl);
+      } else {
+        console.log("Browser not ready, cannot get URL");
+        // Return empty string when browser isn't ready
+        return "";
       }
     } catch (error) {
-      console.log("No active Docker VNC session");
+      console.error("Error getting Puppeteer URL:", error);
+      // Handle error gracefully by returning empty string
+      return "";
     }
+  } else if (source === "ubuntu-docker-vnc") {
+    // Use the last detected URL from explore mode responses
+    pageUrl = lastDetectedUrls[source] || "";
+    console.log("Docker VNC URL from explore response:", pageUrl);
   }
   return pageUrl;
 }
 
-export const addOmniParserResults = (omniParserResult: OmniParserResponse): string => {
+export const addOmniParserResults = (
+  omniParserResult: OmniParserResponse
+): string => {
   return omniParserResult.elements
     .map((element, index) => {
       return `

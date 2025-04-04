@@ -21,7 +21,7 @@ export class ChatController {
 
       // Always reset and recreate the provider with the correct mode to prevent context bleed
       const requestedMode = req.query.mode as Modes || Modes.REGRESSION;
-      ChatService.resetProvider();
+
       ChatService.createProvider(requestedMode);
       console.log(`Chat provider created with mode: ${requestedMode}`);
 

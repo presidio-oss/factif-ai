@@ -95,6 +95,15 @@ io.on("connection", (socket) => {
 // Global error handler
 app.use(errorHandler);
 
+// ASCII art for server startup
+console.log(`
+ ______   ______     ______     ______   __     ______   ______     __    
+/\\  ___\\ /\\  __ \\   /\\  ___\\   /\\__  _\\ /\\ \\   /\\  ___\\ /\\  __ \\   /\\ \\   
+\\ \\  __\\ \\ \\  __ \\  \\ \\ \\____  \\/_/\\ \\/ \\ \\ \\  \\ \\  __\\ \\ \\  __ \\  \\ \\ \\  
+ \\ \\_\\    \\ \\_\\ \\_\\  \\ \\_____\\    \\ \\_\\  \\ \\_\\  \\ \\_\\    \\ \\_\\ \\_\\  \\ \\_\\ 
+  \\/_/     \\/_/\\/_/   \\/_____/     \\/_/   \\/_/   \\/_/     \\/_/\\/_/   \\/_/
+`);
+
 // Start server
 httpServer.listen(config.port, () => {
   io.sockets.emit("browser-console", {

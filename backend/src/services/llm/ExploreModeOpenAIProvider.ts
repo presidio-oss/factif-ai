@@ -11,6 +11,7 @@ import {
 } from "../../utils/conversion-util";
 import {
   getCurrentUrlBasedOnSource,
+  extractAndStoreUrlFromResponse,
 } from "../../utils/common.util";
 import { getLatestScreenshot } from "../../utils/screenshotUtils";
 import { IProcessedScreenshot, OmniParserResponse } from "../interfaces/BrowserService";
@@ -269,6 +270,12 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
             timestamp: Date.now(),
           });
         }
+      }
+
+      // Extract URL from response if using docker source
+      if (source === 'ubuntu-docker-vnc' && accumulatedResponse) {
+        // Use the utility function to extract and store URL
+        extractAndStoreUrlFromResponse(source, accumulatedResponse);
       }
 
       this.sendStreamResponse(res, {

@@ -15,6 +15,7 @@ export const PreviewContent = ({
       className="h-full flex items-center justify-center overflow-auto"
       onClick={interactiveMode ? handleInteraction : undefined}
       onKeyDown={interactiveMode ? handleInteraction : undefined}
+      onMouseMove={interactiveMode ? handleInteraction : undefined}
       tabIndex={interactiveMode ? 0 : undefined}
     >
       <div className="text-gray-300 h-full flex items-center justify-center p-4 max-w-full">
@@ -52,9 +53,10 @@ export const PreviewContent = ({
               alt="Preview"
               width={900}
               height={600}
-              className="object-contain w-full h-full"
+              className={`object-contain w-full h-full ${interactiveMode ? 'interactive-mode-active' : ''}`}
               style={{
                 pointerEvents: interactiveMode ? "auto" : "none",
+                cursor: interactiveMode ? "pointer" : "default"
               }}
             />
           </div>

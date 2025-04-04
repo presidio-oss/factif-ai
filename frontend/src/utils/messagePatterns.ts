@@ -10,9 +10,9 @@ import {
 export class MessagePatterns {
   private static patterns = {
     followupQuestion:
-      /<ask_followup_question>[\s\n]*<question>[\s\n]*(.*?)[\s\n]*<\/question>[\s\n]*<\/ask_followup_question>/s,
+      /<(?:ask_followup_question|follow_up_question)>[\s\n]*<question>[\s\n]*(.*?)[\s\n]*<\/question>(?:[\s\n]*<additional_info>(.*?)<\/additional_info>)?[\s\n]*<\/(?:ask_followup_question|follow_up_question)>/s,
     completeTask:
-      /<complete_task>[\s\n]*<result>([\s\S]*?)<\/result>(?:[\s\n]*<command>(.*?)<\/command>)?[\s\n]*<\/complete_task>/s,
+      /<complete_task>[\s\n]*<task_status>([\s\S]*?)<\/task_status>[\s\n]*<additional_info>([\s\S]*?)<\/additional_info>[\s\n]*<\/complete_task>/s,
     performAction:
       /<perform_action>[\s\S]*?<action>(.*?)<\/action>(?:[\s\S]*?<url>(.*?)<\/url>)?(?:[\s\S]*?<coordinate>(.*?)<\/coordinate>)?(?:[\s\S]*?<text>(.*?)<\/text>)?(?:[\s\S]*?<key>(.*?)<\/key>)?(?:[\s\S]*?<about_this_action>(.*?)<\/about_this_action>)?(?:[\s\S]*?<marker_number>(.*?)<\/marker_number>)?[\s\S]*?<\/perform_action>/s,
     actionResult:
@@ -29,6 +29,11 @@ export class MessagePatterns {
       {
         open: "<ask_followup_question>",
         close: "</ask_followup_question>",
+        processor: this.processFollowupQuestion.bind(this),
+      },
+      {
+        open: "<follow_up_question>",
+        close: "</follow_up_question>",
         processor: this.processFollowupQuestion.bind(this),
       },
       {
@@ -177,31 +182,39 @@ export class MessagePatterns {
   private static processCompleteTaskMatch(
     fullMatch: string,
   ): IProcessedMessagePart | null {
-    const result = fullMatch.match(this.patterns.completeTask)?.[1];
-    const command = fullMatch.match(this.patterns.completeTask)?.[2];
-    let match = null;
-    if (result) {
-      match = {
-        length: fullMatch.length,
-        part: {
-          type: "complete_task",
-          result,
-          ...(command && { command }),
-        } as CompleteTask,
-      };
-    }
-    return match;
+    const matchObj = fullMatch.match(this.patterns.completeTask);
+    if (!matchObj || !matchObj[1] || !matchObj[2]) return null;
+    
+    const taskStatus = matchObj[1];
+    const additionalInfo = matchObj[2];
+    
+    // Add checkmark emoji for successful tasks
+    const formattedResult = `${taskStatus === "success" ? "✅ " : ""}${additionalInfo}`;
+    
+    return {
+      length: fullMatch.length,
+      part: {
+        type: "complete_task",
+        result: formattedResult,
+      } as CompleteTask,
+    };
   }
 
   private static processFollowupQuestion(
     fullMatch: string,
   ): IProcessedMessagePart | null {
-    const question = fullMatch.match(this.patterns.followupQuestion)?.[1];
+    const matches = fullMatch.match(this.patterns.followupQuestion);
     let match = null;
-    if (question) {
+    if (matches && matches[1]) {
+      const question = matches[1];
+      const additionalInfo = matches[2] || null;
       match = {
         length: fullMatch.length,
-        part: { type: "followup_question", question } as FollowupQuestion,
+        part: { 
+          type: "followup_question", 
+          question,
+          ...(additionalInfo && { additionalInfo })
+        } as FollowupQuestion,
       };
     }
     return match;

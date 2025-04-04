@@ -10,6 +10,13 @@ interface BrowserAction {
   params: Record<string, any>;
 }
 
+// Loading state detection configurations
+interface LoadingDetectionConfig {
+  maxWaitTime: number;       // Maximum time to wait for loading to complete (ms)
+  pollingInterval: number;   // How often to check if loading is complete (ms)
+  loadingIndicators: string[]; // CSS selectors for common loading indicators
+}
+
 export class UIInteractionService {
   private static instance: UIInteractionService;
   private socketInitialized: boolean = false;
@@ -23,6 +30,22 @@ export class UIInteractionService {
   private actionPerformedResolve: (() => void) | null = null;
   private lastClickTime: number = 0;
   private lastClickCoords: { x: number; y: number } | null = null;
+  private _hoverThrottleTimeout: ReturnType<typeof setTimeout> | null = null;
+  private _isWaitingForLoading: boolean = false;
+  private _waitTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private _loadingDetectionConfig: LoadingDetectionConfig = {
+    maxWaitTime: 30000,       // 30 seconds default max wait time
+    pollingInterval: 500,     // Check every 500ms
+    loadingIndicators: [
+      '.loading', 
+      '.spinner', 
+      'progress',
+      '.progress',
+      '.loader',
+      '[role="progressbar"]',
+      // Add more common loading indicator selectors
+    ]
+  };
 
   /**
    * Check if the browser is currently started
@@ -176,10 +199,38 @@ export class UIInteractionService {
     });
 
     socket.on("action_performed", () => {
+      this.consoleService.emitConsoleEvent("info", "Action performed event received");
       if (this.actionPerformedResolve) {
         this.actionPerformedResolve();
         this.actionPerformedResolve = null;
       }
+    });
+    
+    // Handle input element focus notification
+    socket.on("input-focused", (coordinates) => {
+      this.consoleService.emitConsoleEvent("info", `Input element focused at (${coordinates.x}, ${coordinates.y})`);
+      this.lastClickCoords = coordinates;
+    });
+    
+    // Handle loading state detection
+    socket.on("loading-state-update", ({ isLoading, progress }) => {
+      if (isLoading) {
+        this.consoleService.emitConsoleEvent("info", `Loading in progress${progress ? `: ${progress}%` : ''}`);
+        this._isWaitingForLoading = true;
+      } else {
+        this.consoleService.emitConsoleEvent("info", "Loading completed");
+        this._isWaitingForLoading = false;
+        if (this.actionPerformedResolve) {
+          this.actionPerformedResolve();
+          this.actionPerformedResolve = null;
+        }
+      }
+    });
+    
+    // Handle page ready events (DOM content loaded, etc)
+    socket.on("page-ready", () => {
+      this.consoleService.emitConsoleEvent("info", "Page is fully loaded");
+      this._isWaitingForLoading = false;
     });
   }
 
@@ -204,13 +255,40 @@ export class UIInteractionService {
       }
     }
   }
+  
+  /**
+   * Handles browser back navigation without resetting the browser
+   * Uses the browser's native history navigation capabilities
+   * @returns {Promise<void>}
+   */
+  async handleBackNavigation(): Promise<void> {
+    const socket = SocketService.getInstance().getSocket();
+    
+    if (!socket || !this.interactiveModeEnabled) {
+      this.consoleService.emitConsoleEvent(
+        "error",
+        "Cannot perform back navigation: Socket not initialized or interactive mode not enabled"
+      );
+      return;
+    }
+    
+    try {
+      // Use the existing performAction method with the "back" action
+      await this.performAction("back");
+      this.consoleService.emitConsoleEvent("info", "Back navigation performed");
+    } catch (error) {
+      this.consoleService.emitConsoleEvent(
+        "error", 
+        `Back navigation failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
+  }
 
   handleMouseInteraction(event: MouseEvent, imageElement: HTMLImageElement) {
     const socket = SocketService.getInstance().getSocket();
     if (
       !socket ||
-      (this.currentSource === "ubuntu-docker-vnc" &&
-        !this.interactiveModeEnabled)
+      !this.interactiveModeEnabled
     )
       return;
 
@@ -227,45 +305,93 @@ export class UIInteractionService {
     const scaledX = Math.round(relativeX * scaleX);
     const scaledY = Math.round(relativeY * scaleY);
 
-    const currentTime = Date.now();
-    const timeDiff = currentTime - this.lastClickTime;
-    const isDoubleClick =
-      timeDiff < 300 &&
-      this.lastClickCoords &&
-      Math.abs(this.lastClickCoords.x - scaledX) < 5 &&
-      Math.abs(this.lastClickCoords.y - scaledY) < 5;
+    // For click events only
+    if (event.type === 'click' || event.type === 'mousedown') {
+      const currentTime = Date.now();
+      const timeDiff = currentTime - this.lastClickTime;
+      const isDoubleClick =
+        timeDiff < 300 &&
+        this.lastClickCoords &&
+        Math.abs(this.lastClickCoords.x - scaledX) < 5 &&
+        Math.abs(this.lastClickCoords.y - scaledY) < 5;
 
-    if (isDoubleClick) {
-      this.emitBrowserAction({
-        action: "doubleClick",
-        params: { x: scaledX, y: scaledY },
-      });
-      this.consoleService.emitConsoleEvent(
-        "info",
-        `Double click event at scaled coordinates (${scaledX}, ${scaledY})`,
-      );
-      this.lastClickTime = 0;
-      this.lastClickCoords = null;
-    } else {
-      this.emitBrowserAction({
-        action: "click",
-        params: { x: scaledX, y: scaledY },
-      });
-      this.consoleService.emitConsoleEvent(
-        "info",
-        `Click event at scaled coordinates (${scaledX}, ${scaledY})`,
-      );
-      this.lastClickTime = currentTime;
-      this.lastClickCoords = { x: scaledX, y: scaledY };
+      if (isDoubleClick) {
+        this.emitBrowserAction({
+          action: "doubleClick",
+          params: { x: scaledX, y: scaledY },
+        });
+        this.consoleService.emitConsoleEvent(
+          "info",
+          `Double click event at scaled coordinates (${scaledX}, ${scaledY})`,
+        );
+        this.lastClickTime = 0;
+        this.lastClickCoords = null;
+      } else {
+        this.emitBrowserAction({
+          action: "click",
+          params: { x: scaledX, y: scaledY },
+        });
+        this.consoleService.emitConsoleEvent(
+          "info",
+          `Click event at scaled coordinates (${scaledX}, ${scaledY})`,
+        );
+        this.lastClickTime = currentTime;
+        this.lastClickCoords = { x: scaledX, y: scaledY };
+      }
     }
+  }
+  
+  /**
+   * Handle mouse hover interactions
+   * @param event Mouse event
+   * @param imageElement Image element being hovered
+   */
+  handleHoverInteraction(event: MouseEvent, imageElement: HTMLImageElement) {
+    const socket = SocketService.getInstance().getSocket();
+    if (
+      !socket ||
+      !this.interactiveModeEnabled
+    )
+      return;
+
+    // Calculate hover coordinates using the same scaling logic as for clicks
+    const imageRect = imageElement.getBoundingClientRect();
+    const naturalWidth = imageElement.naturalWidth;
+    const naturalHeight = imageElement.naturalHeight;
+
+    const scaleX = naturalWidth / imageRect.width;
+    const scaleY = naturalHeight / imageRect.height;
+
+    const relativeX = event.clientX - imageRect.left;
+    const relativeY = event.clientY - imageRect.top;
+
+    const scaledX = Math.round(relativeX * scaleX);
+    const scaledY = Math.round(relativeY * scaleY);
+    
+    // Throttle hover events to avoid overwhelming the server
+    // Use setTimeout with a small delay to debounce hover events
+    if (this._hoverThrottleTimeout) {
+      clearTimeout(this._hoverThrottleTimeout);
+    }
+    
+    this._hoverThrottleTimeout = setTimeout(() => {
+      this.emitBrowserAction({
+        action: "hover",
+        params: { x: scaledX, y: scaledY },
+      });
+      
+      this.consoleService.emitConsoleEvent(
+        "info",
+        `Hover event at scaled coordinates (${scaledX}, ${scaledY})`,
+      );
+    }, 50); // 50ms throttle
   }
 
   handleKeyboardInteraction(event: KeyboardEvent) {
     const socket = SocketService.getInstance().getSocket();
     if (
       !socket ||
-      (this.currentSource === "ubuntu-docker-vnc" &&
-        !this.interactiveModeEnabled)
+      !this.interactiveModeEnabled
     )
       return;
 
@@ -313,8 +439,7 @@ export class UIInteractionService {
     const socket = SocketService.getInstance().getSocket();
     if (
       !socket ||
-      (this.currentSource === "ubuntu-docker-vnc" &&
-        !this.interactiveModeEnabled)
+      !this.interactiveModeEnabled
     )
       return;
 
@@ -348,20 +473,87 @@ export class UIInteractionService {
   private emitBrowserAction(action: BrowserAction) {
     const socket = SocketService.getInstance().getSocket();
     if (socket) {
+      // Log the action being sent
+      this.consoleService.emitConsoleEvent(
+        "info", 
+        `Sending browser action: ${action.action} ${
+          action.params.x !== undefined ? `at (${action.params.x}, ${action.params.y})` : ""
+        }`
+      );
+      
+      // Send the action to the server
       socket.emit("browser-action", action);
     }
+  }
+
+  /**
+   * Wait for loading to complete
+   * @param timeout Optional timeout override in ms
+   * @returns Promise that resolves when loading completes or rejects on timeout
+   */
+  async waitForLoading(timeout?: number): Promise<void> {
+    const socket = SocketService.getInstance().getSocket();
+    if (!socket) {
+      throw new Error("Cannot wait for loading: Socket not initialized");
+    }
+    
+    const maxWaitTime = timeout || this._loadingDetectionConfig.maxWaitTime;
+    
+    return new Promise<void>((resolve, reject) => {
+      // If not already waiting for loading
+      if (!this._isWaitingForLoading) {
+        // Check if there are any loading indicators on the page
+        this.emitBrowserAction({
+          action: "detectLoading",
+          params: { 
+            selectors: this._loadingDetectionConfig.loadingIndicators 
+          },
+        });
+      }
+      
+      // Setup listener for loading completion
+      const loadingCompleteHandler = () => {
+        if (this._waitTimeoutId) {
+          clearTimeout(this._waitTimeoutId);
+          this._waitTimeoutId = null;
+        }
+        socket.off("loading-state-update", loadingUpdateHandler);
+        socket.off("page-ready", loadingCompleteHandler);
+        this._isWaitingForLoading = false;
+        resolve();
+      };
+      
+      // Handle loading state updates
+      const loadingUpdateHandler = ({ isLoading }: { isLoading: boolean }) => {
+        if (!isLoading) {
+          loadingCompleteHandler();
+        }
+      };
+      
+      socket.on("loading-state-update", loadingUpdateHandler);
+      socket.on("page-ready", loadingCompleteHandler);
+      
+      // Set timeout to prevent waiting indefinitely
+      this._waitTimeoutId = setTimeout(() => {
+        socket.off("loading-state-update", loadingUpdateHandler);
+        socket.off("page-ready", loadingCompleteHandler);
+        this._isWaitingForLoading = false;
+        this.consoleService.emitConsoleEvent("warn", `Wait for loading timed out after ${maxWaitTime}ms`);
+        reject(new Error(`Wait for loading timed out after ${maxWaitTime}ms`));
+      }, maxWaitTime);
+    });
   }
 
   async performAction(
     action: string,
     coordinate?: string,
     text?: string,
+    waitTimeout?: number
   ): Promise<void> {
     const socket = SocketService.getInstance().getSocket();
     if (
       !socket ||
-      (this.currentSource === "ubuntu-docker-vnc" &&
-        !this.interactiveModeEnabled)
+      !this.interactiveModeEnabled
     ) {
       this.consoleService.emitConsoleEvent(
         "error",
@@ -400,6 +592,25 @@ export class UIInteractionService {
 
       socket.on("action_performed", actionPerformedHandler);
       switch (action.toLowerCase()) {
+        case "back":
+          // Back navigation action
+          this.emitBrowserAction({ action: "back", params: {} });
+          this.consoleService.emitConsoleEvent("info", "Back navigation action sent");
+          break;
+          
+        case "wait":
+          // Wait for loading to complete or a specific condition
+          const waitTimeout = text ? parseInt(text, 10) : undefined;
+          this.waitForLoading(waitTimeout)
+            .then(() => {
+              this.consoleService.emitConsoleEvent("info", "Wait completed successfully");
+              clearTimeoutAndResolve();
+            })
+            .catch((error) => {
+              clearTimeoutAndReject(error instanceof Error ? error : new Error(String(error)));
+            });
+          break;
+
         case "click":
           if (coordinate) {
             const [x, y] = coordinate.split(",").map(Number);
@@ -446,6 +657,18 @@ export class UIInteractionService {
               "info",
               `Type action: ${text}`,
             );
+            
+            // After typing, automatically check for loading indicators
+            // This helps with form submissions that might happen after typing
+            setTimeout(() => {
+              this.emitBrowserAction({
+                action: "detectLoading",
+                params: { 
+                  selectors: this._loadingDetectionConfig.loadingIndicators,
+                  afterAction: true 
+                },
+              });
+            }, 300);
           } else {
             clearTimeoutAndReject(new Error("Type action requires text"));
           }
@@ -461,6 +684,24 @@ export class UIInteractionService {
             this.consoleService.emitConsoleEvent(
               "info",
               `Key press action: ${text}`,
+            );
+          }
+          break;
+
+        case "hover":
+          if (coordinate) {
+            const [x, y] = coordinate.split(",").map(Number);
+            this.emitBrowserAction({
+              action: "hover",
+              params: { x, y },
+            });
+            this.consoleService.emitConsoleEvent(
+              "info",
+              `Hover event at coordinates (${x}, ${y})`,
+            );
+          } else {
+            clearTimeoutAndReject(
+              new Error("Hover action requires coordinates"),
             );
           }
           break;
@@ -481,6 +722,26 @@ export class UIInteractionService {
           this.consoleService.emitConsoleEvent("info", "Browser closed");
           clearTimeoutAndResolve();
           break;
+          
+        case "submit":
+          // Submit form and wait for loading to complete
+          this.emitBrowserAction({
+            action: "submit",
+            params: coordinate ? { selector: coordinate } : {},
+          });
+          this.consoleService.emitConsoleEvent("info", "Form submission action sent");
+          
+          // Automatically check for loading after submission
+          setTimeout(() => {
+            this.emitBrowserAction({
+              action: "detectLoading",
+              params: { 
+                selectors: this._loadingDetectionConfig.loadingIndicators,
+                afterAction: true 
+              },
+            });
+          }, 300);
+          break;
 
         default:
           clearTimeoutAndReject(new Error(`Unknown action: ${action}`));
@@ -492,7 +753,7 @@ export class UIInteractionService {
         socket.off("action_performed", actionPerformedHandler);
         clearTimeoutAndReject(new Error("Action timed out"));
         this.consoleService.emitConsoleEvent("error", `Action timed out`);
-      }, 30_000);
+      }, 5_000);
     });
   }
 }

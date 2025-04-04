@@ -188,24 +188,42 @@ export class DockerActions {
     direction: "up" | "down",
   ): Promise<ActionResponse> {
     const button = direction === "up" ? "4" : "5";
-    const scrollAttempts = 2; // Number of scroll clicks to perform
-    const scrollDelay = 50; // Delay between scroll clicks in ms
-    const contentLoadDelay = 2000; // Delay after scrolling for content to load
-
+    // Use smaller number of attempts for more controlled scrolling
+    const scrollAttempts = 3;
+    const scrollDelay = 200; // Delay between scroll actions
+    const contentLoadDelay = 1000; // Wait for content to load after scrolling
+    
     try {
-      // Perform multiple scroll clicks with delays between them
+      console.log(`Performing controlled scroll ${direction} (approx. 300px)`);
+      
+      // Primary method: Mousedown/up for better control of scroll amount
       for (let i = 0; i < scrollAttempts; i++) {
         await DockerCommands.executeCommand({
-          command: ["exec", containerId, "xdotool", "click", button],
-          successMessage: `Action Result: Scroll attempt ${i + 1}/${scrollAttempts} ${direction}`,
-          errorMessage: "Action Result: Scroll action failed",
+          command: [
+            "exec", 
+            containerId, 
+            "xdotool",
+            "mousedown", 
+            button, 
+            "mouseup", 
+            button
+          ],
+          successMessage: `Scroll step ${i + 1}/${scrollAttempts} ${direction}`,
+          errorMessage: "Scroll step failed",
         });
-
-        // Wait between scroll clicks to allow for smooth scrolling
-        if (i < scrollAttempts - 1) {
-          await new Promise((resolve) => setTimeout(resolve, scrollDelay));
-        }
+        
+        // Small delay between scroll actions for better responsiveness
+        await new Promise((resolve) => setTimeout(resolve, scrollDelay));
       }
+      
+      // If the mousedown/up approach doesn't scroll enough, 
+      // use a single arrow key press as fallback (more gentle than Page Up/Down)
+      const arrowKey = direction === "up" ? "Up" : "Down";
+      await DockerCommands.executeCommand({
+        command: ["exec", containerId, "xdotool", "key", "--repeat", "3", arrowKey],
+        successMessage: `Fine-tuning scroll with arrow keys`,
+        errorMessage: "Arrow key scroll failed",
+      });
 
       // Wait for lazy-loaded content and animations to complete
       await new Promise((resolve) => setTimeout(resolve, contentLoadDelay));
@@ -215,10 +233,10 @@ export class DockerActions {
         containerId,
         "/tmp/screenshot.png",
       );
-
+      
       return {
         status: "success",
-        message: `Action Result: Scrolled ${direction}`,
+        message: `Action Result: Scrolled ${direction} approximately 300px`,
         screenshot: screenshot || "",
       };
     } catch (error: any) {

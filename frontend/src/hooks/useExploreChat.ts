@@ -25,6 +25,9 @@ import { pruneMessages } from "@/utils/storageUtil";
 import { v4 as uuid } from "uuid";
 import { createEdgeOrNode } from "@/utils/graph.util.ts";
 import { StreamingSource } from "@/types/api.types.ts";
+import {
+  RouteClassifierService
+} from "@/services/routeClassifierService";
 
 export const useExploreChat = () => {
   const {
@@ -268,24 +271,103 @@ export const useExploreChat = () => {
     }
   };
 
-  const createConstructNode = (
+  const createConstructNode = async (
     currentNodeId: string,
     data: { label: string; imageData?: string },
   ) => {
     const currentNodelCount = exploreGraphData.current.nodes.length;
+    const url = data.label;
 
-    exploreGraphData.current.nodes.push({
-      id: currentNodeId,
-      position: { x: 200, y: currentNodelCount * 100 },
-      data: {
-        label: data.label,
-        edges: [],
-        imageData: data.imageData,
-      },
-      type: "pageNode",
-    });
-    setGraphData(exploreGraphData.current);
-    
+    // Define a properly typed node data object with all required fields
+    interface NodeData {
+      label: string;
+      edges: string[];
+      imageData?: string;
+      category?: string;
+      categoryDescription?: string;
+    }
+
+    // Immediately classify the new node before adding it to the graph
+    let nodeData: NodeData = {
+      label: data.label,
+      edges: [],
+      imageData: data.imageData,
+    };
+
+    try {
+      // Attempt to classify the URL immediately
+      console.log(`Classifying new node URL: ${url}`);
+      const classifications = await RouteClassifierService.classifyRoutes([
+        url,
+      ]);
+
+      if (classifications && classifications[url]) {
+        console.log(`Got classification for ${url}:`, classifications[url]);
+        // Add category information to the node data
+        nodeData = {
+          ...nodeData,
+          category: classifications[url].category,
+          categoryDescription: classifications[url].description,
+        };
+      } else {
+        console.log(`No classification available for ${url}, using defaults`);
+
+        // Apply default classification based on URL patterns
+        if (
+          url.includes("/login") ||
+          url.includes("/signin") ||
+          url.includes("/register")
+        ) {
+          nodeData.category = "auth";
+          nodeData.categoryDescription = "Authentication page";
+        } else if (url.includes("/dashboard")) {
+          nodeData.category = "dashboard";
+          nodeData.categoryDescription = "Dashboard page";
+        } else if (url.includes("/product")) {
+          nodeData.category = "product";
+          nodeData.categoryDescription = "Product page";
+        } else if (url.includes("/profile")) {
+          nodeData.category = "profile";
+          nodeData.categoryDescription = "Profile page";
+        } else if (url === "/" || url.endsWith(".html")) {
+          nodeData.category = "landing";
+          nodeData.categoryDescription = "Landing page";
+        } else {
+          nodeData.category = "uncategorized";
+          nodeData.categoryDescription = "Uncategorized page";
+        }
+      }
+    } catch (error) {
+      console.error(`Error classifying new node ${url}:`, error);
+      // Default to uncategorized if classification fails
+      nodeData.category = "uncategorized";
+      nodeData.categoryDescription = "Uncategorized page";
+    }
+
+    // Create a new array instead of mutating the existing one
+    exploreGraphData.current = {
+      ...exploreGraphData.current,
+      nodes: [
+        ...exploreGraphData.current.nodes,
+        {
+          id: currentNodeId,
+          position: { x: 200, y: currentNodelCount * 100 },
+          data: {
+            ...nodeData,
+            // Store the timestamp with the image so we know when it was captured
+            imageTimestamp: Date.now(),
+          },
+          type: "pageNode",
+        },
+      ],
+    };
+
+    // Pass a new object reference to ensure state update is detected
+    setGraphData({ ...exploreGraphData.current });
+    console.log(
+      `Added node ${currentNodeId} with category ${nodeData.category}`,
+    );
+
     // Safely store graph data with error handling
     try {
       localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
@@ -301,21 +383,42 @@ export const useExploreChat = () => {
     edgeId: string,
     label: string,
   ) => {
-    exploreGraphData.current.edges.push({
-      id: edgeId,
-      source: sourceId,
-      target: targetId,
-      sourceHandle: edgeId,
-      type: "bezier",
-      label,
-    });
-    exploreGraphData.current.nodes.map((node) => {
+    // Create a new edges array
+    const newEdges = [
+      ...exploreGraphData.current.edges,
+      {
+        id: edgeId,
+        source: sourceId,
+        target: targetId,
+        sourceHandle: edgeId,
+        type: "default",
+        label,
+      },
+    ];
+
+    // Create a new nodes array with updated edges
+    const newNodes = exploreGraphData.current.nodes.map((node) => {
       if (node.id === sourceId) {
-        node.data.edges = [...node.data.edges, edgeId];
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            edges: [...node.data.edges, edgeId],
+          },
+        };
       }
+      return node;
     });
-    setGraphData(exploreGraphData.current);
-    
+
+    // Update the ref with completely new objects
+    exploreGraphData.current = {
+      nodes: newNodes,
+      edges: newEdges,
+    };
+
+    // Pass a new object reference to ensure state update is detected
+    setGraphData({ ...exploreGraphData.current });
+
     // Safely store graph data with error handling
     try {
       localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
@@ -332,43 +435,60 @@ export const useExploreChat = () => {
       const persistenceInterval = setInterval(() => {
         // Check if we still have graph data to persist
         if (exploreGraphData.current?.nodes?.length > 0) {
-          console.log("Periodic graph data persistence:", 
-                     exploreGraphData.current.nodes.length, "nodes");
-          setGraphData(exploreGraphData.current);
-          
+          console.log(
+            "Periodic graph data persistence:",
+            exploreGraphData.current.nodes.length,
+            "nodes",
+          );
+          // Create a new object reference to ensure state update is detected
+          setGraphData({ ...exploreGraphData.current });
+
           try {
-            localStorage.setItem("MAP", JSON.stringify(exploreGraphData.current));
+            localStorage.setItem(
+              "MAP",
+              JSON.stringify(exploreGraphData.current),
+            );
           } catch (error) {
-            console.error("Failed to save graph data during periodic persistence:", error);
+            console.error(
+              "Failed to save graph data during periodic persistence:",
+              error,
+            );
             // App can continue functioning without this persistence
           }
         }
       }, 30000); // Every 30 seconds
-      
+
       return () => clearInterval(persistenceInterval);
     }
-  }, [exploreGraphData.current?.nodes?.length, setGraphData]);
+  }, [setGraphData]); // Don't depend on exploreGraphData.current to avoid infinite re-renders
 
-  const handleEdgeAndNodeCreation = (
-    url: string,
-    imageData: string,
-  ) => {
+  const handleEdgeAndNodeCreation = (url: string, imageData: string) => {
     if (!url) {
       console.error("Cannot create node: URL is empty");
       return uuid(); // Return a node ID anyway to prevent further errors
     }
-    
+
     // Make sure exploreGraphData.current is properly initialized
     if (!exploreGraphData.current || !exploreGraphData.current.nodes) {
-      console.warn("exploreGraphData.current is not properly initialized, resetting it");
-      
+      console.warn(
+        "exploreGraphData.current is not properly initialized, resetting it",
+      );
+
       // Try to load from localStorage first before resetting
       try {
         const storedMap = localStorage.getItem("MAP");
         if (storedMap) {
           const parsedMap = JSON.parse(storedMap);
-          if (parsedMap && Array.isArray(parsedMap.nodes) && parsedMap.nodes.length > 0) {
-            console.log("Restored graph data from localStorage:", parsedMap.nodes.length, "nodes");
+          if (
+            parsedMap &&
+            Array.isArray(parsedMap.nodes) &&
+            parsedMap.nodes.length > 0
+          ) {
+            console.log(
+              "Restored graph data from localStorage:",
+              parsedMap.nodes.length,
+              "nodes",
+            );
             exploreGraphData.current = parsedMap;
           } else {
             exploreGraphData.current = { nodes: [], edges: [] };
@@ -380,15 +500,24 @@ export const useExploreChat = () => {
         console.error("Failed to restore graph data from localStorage:", error);
         exploreGraphData.current = { nodes: [], edges: [] };
       }
-      
+
       // Immediately update the context to ensure the graph UI knows about this change
       setGraphData(exploreGraphData.current);
     }
-    
+
+    // Log the URL being processed for debugging
+    console.log(`Processing URL for node: ${url}`);
+
+    // Check if this URL should be treated as a new node or update an existing one
     const canCreateNode = createEdgeOrNode(exploreGraphData.current.nodes, url);
     const nodeId = !canCreateNode.createNode
       ? (canCreateNode.node?.id as string)
       : uuid();
+
+    // Log whether we're creating a new node or updating existing one
+    console.log(
+      `URL ${url} - ${canCreateNode.createNode ? "Creating new node" : "Updating existing node"} with ID ${nodeId}`,
+    );
 
     // Check if this might be the first node (homepage)
     const isFirstNode = exploreGraphData.current.nodes.length === 0;
@@ -405,34 +534,42 @@ export const useExploreChat = () => {
       }
 
       createConstructNode(nodeId, { label: url, imageData });
-      
+
       // After creating the first node, explicitly log the graph state
       if (isFirstNode) {
-        console.log("After creating first node, graph state:", JSON.stringify(exploreGraphData.current));
+        console.log(
+          "After creating first node, graph state:",
+          JSON.stringify(exploreGraphData.current),
+        );
       }
-    } else if (
-      isFirstNode &&
-      !canCreateNode.node?.data.imageData &&
-      imageData
-    ) {
-      // Special case: If we're not creating a new node because it already exists,
-      // but it's the first node and doesn't have image data, update it with the image
-      console.log("Updating first node with missing image data");
-      exploreGraphData.current.nodes = exploreGraphData.current.nodes.map(
-        (node) => {
-          if (node.id === nodeId) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                imageData,
-              },
-            };
-          }
-          return node;
-        },
-      );
-      setGraphData(exploreGraphData.current);
+    } else if (imageData) {
+      // If this URL already exists as a node but we have a new screenshot, update it
+      // This ensures nodes always have the most up-to-date screenshot
+      console.log(`Updating existing node ${nodeId} with new screenshot`);
+
+      // Create a new nodes array with updated image data
+      const newNodes = exploreGraphData.current.nodes.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              imageData, // Always use the latest image
+              imageTimestamp: Date.now(), // Update the timestamp to track when this image was captured
+            },
+          };
+        }
+        return node;
+      });
+
+      // Update the ref with a new object
+      exploreGraphData.current = {
+        ...exploreGraphData.current,
+        nodes: newNodes,
+      };
+
+      // Pass a new object reference to ensure state update is detected
+      setGraphData({ ...exploreGraphData.current });
     }
 
     if (currentlyExploring.current) {
@@ -482,27 +619,32 @@ export const useExploreChat = () => {
         exploreQueue.current[url].push(exploredOutput);
       }
     }
-    
+
     try {
       // Create a storage-optimized version of the queue (without screenshots)
-      const storageOptimizedQueue: Record<string, Omit<IExploreQueueItem, 'screenshot'>[]> = {};
-      
+      const storageOptimizedQueue: Record<
+        string,
+        Omit<IExploreQueueItem, "screenshot">[]
+      > = {};
+
       // Process each URL in the queue
-      Object.keys(exploreQueue.current).forEach(queueUrl => {
+      Object.keys(exploreQueue.current).forEach((queueUrl) => {
         // Limit to max 50 items per URL to prevent excessive storage
         const limitedItems = exploreQueue.current[queueUrl].slice(0, 50);
-        
+
         // Remove screenshots and full source text to reduce size
-        storageOptimizedQueue[queueUrl] = limitedItems.map(item => {
+        storageOptimizedQueue[queueUrl] = limitedItems.map((item) => {
           const { screenshot, source, ...rest } = item;
           return {
             ...rest,
             // Keep a shortened version of the source if needed
-            source: source?.substring(0, 100) + (source && source.length > 100 ? '...' : '')
+            source:
+              source?.substring(0, 100) +
+              (source && source.length > 100 ? "..." : ""),
           };
         });
       });
-      
+
       localStorage.setItem(
         "started_explore",
         JSON.stringify(storageOptimizedQueue),
@@ -547,45 +689,114 @@ export const useExploreChat = () => {
 
       if (!url) return;
 
+      console.log(`Processing explore output for URL: ${url}`);
+
       // Always process the elements for the current URL, whether we've seen it before or not
       // This ensures we don't miss any clickable elements on pages we revisit
       if (!exploreQueue.current[url]) {
         exploreQueue.current[url] = [];
+        console.log(`Created new queue for URL: ${url}`);
       }
 
-      // Only add to routeSet if it's a new URL
-      if (!routeSet.has(url as string)) {
-        routeSet.add(url as string);
-        const nodeId = handleEdgeAndNodeCreation(url, imageData);
-        handleQueueUpdate(
-          processedExploreMessage,
-          fullResponse,
-          url,
-          nodeId,
-          parent,
-          imageData,
-        );
-      } else if (exploreQueue.current[url].length === 0) {
-        // If we've seen this URL before but its queue is empty, update with new elements
-        const existingNode = exploreGraphData.current.nodes.find(
-          (node) => node.data.label === url,
+      // Find any existing node for this URL using our improved URL comparison logic
+      const existingNode = exploreGraphData.current.nodes.find((node) => {
+        // First check for exact match
+        if (node.data.label === url) {
+          return true;
+        }
+
+        // Then try normalized comparison for different domains/subdomains
+        try {
+          // Parse both URLs
+          const currentUrl = new URL(url);
+          const nodeUrl = new URL(node.data.label);
+
+          // Check if these are different domains/subdomains with same path
+          const currentDomain = currentUrl.hostname;
+          const nodeDomain = nodeUrl.hostname;
+
+          if (currentDomain !== nodeDomain) {
+            // Different domains should always be treated as separate nodes
+            return false;
+          }
+
+          // For same domain, compare paths
+          return (
+            currentUrl.pathname === nodeUrl.pathname &&
+            currentUrl.search === nodeUrl.search
+          );
+        } catch (e) {
+          // If URL parsing fails, fall back to exact match
+          return false;
+        }
+      });
+
+      const nodeId = existingNode
+        ? existingNode.id
+        : handleEdgeAndNodeCreation(url, imageData);
+
+      // Add to route set if it's a new URL
+      if (!routeSet.has(url)) {
+        routeSet.add(url);
+        console.log(`Added new URL to route set: ${url}`);
+      }
+
+      // Always update the queue with the latest elements
+      handleQueueUpdate(
+        processedExploreMessage,
+        fullResponse,
+        url,
+        nodeId,
+        parent,
+        imageData,
+      );
+
+      // Always update the screenshot, regardless of whether we've seen this URL before
+      if (existingNode && imageData) {
+        console.log(
+          `Updating screenshot for existing node: ${nodeId} (${url})`,
         );
 
-        if (existingNode) {
-          handleQueueUpdate(
-            processedExploreMessage,
-            fullResponse,
-            url,
-            existingNode.id,
-            parent,
-            imageData,
-          );
-          console.log(`Updated elements for existing route: ${url}`);
-        }
+        // Force an update of the node's image data and timestamp
+        const updatedNodes = exploreGraphData.current.nodes.map((node) => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                imageData, // Always use the latest image
+                imageTimestamp: Date.now(), // Update the timestamp
+              },
+            };
+          }
+          return node;
+        });
+
+        // Update the graph data with the new nodes
+        exploreGraphData.current = {
+          ...exploreGraphData.current,
+          nodes: updatedNodes,
+        };
+
+        // Force a re-render of the graph by passing a new object reference
+        setGraphData({ ...exploreGraphData.current });
       }
     }
 
+    // Create a new array to ensure reactivity when updating routes
     exploreRoute.current = [...routeSet];
+
+    // After any processing is done, ensure graph data is properly updated
+    if (exploreGraphData.current.nodes.length > 0) {
+      // Force a re-render of the graph by passing a new object reference
+      setGraphData({ ...exploreGraphData.current });
+      console.log(
+        "Graph data updated with",
+        exploreGraphData.current.nodes.length,
+        "nodes",
+      );
+    }
+
     return processedExploreMessage.length > 0
       ? processedExploreMessage[0]
       : null;
@@ -704,9 +915,7 @@ export const useExploreChat = () => {
     }
   };
 
-  const onGettingExploredMode = async (
-    imageData?: string,
-  ) => {
+  const onGettingExploredMode = async (imageData?: string) => {
     const nextElementToVisit = getNextToExplore();
     console.log("nextElementToVisit ===>", nextElementToVisit);
     isProcessing.current = false;
@@ -714,10 +923,9 @@ export const useExploreChat = () => {
     if (nextElementToVisit) {
       setType("action");
 
-      // Use the element's saved screenshot if available, otherwise use the current page screenshot
-      // This ensures we document the state of the page when the element was found
-      const elementScreenshot = nextElementToVisit.screenshot ||imageData
-
+      // Always use the latest screenshot, not the one from when the element was discovered
+      // This ensures we have the current state of the page for navigation
+      const elementScreenshot = imageData;
 
       // Include a direct instruction to take a screenshot after navigation
       const message = `In ${nextElementToVisit.url} \n Visit ${nextElementToVisit.text} on coordinate : ${nextElementToVisit.coordinates} with about this element : ${nextElementToVisit.aboutThisElement}. After clicking on this element you MUST take a screenshot by performing a click action. This screenshot is important for complete documentation of this feature.
@@ -943,7 +1151,7 @@ export const useExploreChat = () => {
       exploreRoute.current = [];
       currentlyExploring.current = null;
       setGraphData({ nodes: [], edges: [] });
-      
+
       // Clear localStorage MAP data to ensure a fresh start
       try {
         localStorage.removeItem("MAP");
@@ -1016,20 +1224,39 @@ export const useExploreChat = () => {
 
       // Load graph data with enhanced validation and debugging
       console.log("Session graph data:", session?.graphData);
-      
-      if (session.graphData && (session.graphData.nodes || session.graphData.edges)) {
+
+      if (
+        session.graphData &&
+        (session.graphData.nodes || session.graphData.edges)
+      ) {
         // Verify graph data structure is valid
         const validGraphData = {
-          nodes: Array.isArray(session.graphData.nodes) ? session.graphData.nodes : [],
-          edges: Array.isArray(session.graphData.edges) ? session.graphData.edges : []
+          nodes: Array.isArray(session.graphData.nodes)
+            ? session.graphData.nodes
+            : [],
+          edges: Array.isArray(session.graphData.edges)
+            ? session.graphData.edges
+            : [],
         };
-        
+
         console.log("Graph data nodes count:", validGraphData.nodes.length);
         console.log("Graph data edges count:", validGraphData.edges.length);
-        
-        // Update the ref and context
-        exploreGraphData.current = validGraphData;
-        setGraphData(validGraphData);
+
+        // Create new object references for all graph data to ensure reactivity
+        const reactiveGraphData = {
+          nodes: validGraphData.nodes.map((node) => ({
+            ...node,
+            data: { ...node.data },
+          })),
+          edges: validGraphData.edges.map((edge) => ({ ...edge })),
+        };
+
+        // Update the ref and context with new object references
+        exploreGraphData.current = reactiveGraphData;
+        setGraphData({ ...reactiveGraphData });
+
+        // Log an explicit message about graph data reactivity
+        console.log("Loaded graph data with new reactive references");
       } else {
         console.log("No valid graph data in session, initializing empty graph");
         exploreGraphData.current = { nodes: [], edges: [] };

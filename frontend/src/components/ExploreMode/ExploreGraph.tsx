@@ -205,12 +205,12 @@ const nodeTypes = {
 
 export function ExploreGraph() {
   const { graphData, setShowGraph } = useExploreModeContext();
-  
+
   // Add debug logging to track when graph data is received and if it's empty
   useEffect(() => {
     console.log("GraphData received in ExploreGraph:", graphData);
     console.log("Nodes length:", graphData?.nodes?.length || 0);
-    
+
     // If we have no nodes, log a warning
     if (!graphData?.nodes?.length) {
       console.warn("Graph data is empty - no nodes to display");
@@ -254,12 +254,56 @@ export function ExploreGraph() {
     [],
   );
 
-  const [nodes, setNodes] = useState<Node[]>(() =>
-    convertToNodes(graphData?.nodes),
-  );
-  // Also properly cast edges to ensure type compatibility
+  // State declarations with layout-aware initialization
+  const [nodes, setNodes] = useState<Node[]>(() => {
+    const initialNodes = convertToNodes(graphData?.nodes);
+    if (!initialNodes.length) return [];
+    
+    // Apply initial layout
+    const categorizedNodes = initialNodes.reduce((acc, node) => {
+      const category = (node.data?.category as string)?.toLowerCase() || "uncategorized";
+      if (!acc[category]) acc[category] = [];
+      acc[category].push(node);
+      return acc;
+    }, {} as Record<string, Node[]>);
+
+    // Position nodes in grid layout
+    const layoutedNodes: Node[] = [];
+    let yOffset = 0;
+    
+    Object.entries(categorizedNodes).forEach(([category, nodes]) => {
+      const nodesPerRow = 3;
+      const nodeWidth = 170;
+      const nodeHeight = 150;
+      const horizontalPadding = 30;
+
+      nodes.forEach((node, index) => {
+        const row = Math.floor(index / nodesPerRow);
+        const col = index % nodesPerRow;
+        layoutedNodes.push({
+          ...node,
+          position: {
+            x: col * (nodeWidth + horizontalPadding),
+            y: yOffset + row * (nodeHeight + 20)
+          }
+        });
+      });
+      
+      const rows = Math.ceil(nodes.length / nodesPerRow);
+      yOffset += rows * (nodeHeight + 20) + 150;
+    });
+
+    return layoutedNodes;
+  });
+
   const [edges, setEdges] = useState<Edge[]>(() =>
-    graphData?.edges ? ([...graphData.edges] as unknown as Edge[]) : [],
+    graphData?.edges ? graphData.edges.map(edge => ({
+      ...edge,
+      animated: true,
+      markerEnd: { type: MarkerType.ArrowClosed },
+      style: { stroke: "#555" },
+      type: "default",
+    })) as Edge[] : []
   );
 
   const onNodesChange: OnNodesChange = useCallback(
@@ -277,188 +321,159 @@ export function ExploreGraph() {
     [],
   );
 
-  // Classify routes only when nodes are added/changed
+  // Classify routes only when nodes are added/changed or nodes first load
   useEffect(() => {
     if (!graphData?.nodes || graphData.nodes.length === 0) return;
 
-    // Check if nodes already have categories assigned
-    const needsClassification = graphData.nodes.some(
-      (node) => !node.data?.category,
+    // Get all nodes that need classification (either no category or showing as "uncategorized")
+    const nodesToClassify = graphData.nodes.filter(
+      (node) => !node.data?.category || node.data?.category === "uncategorized"
     );
 
-    if (!needsClassification) {
-      return; // Skip classification if all nodes already have categories
-    }
+    // Get all URLs from nodes, both classified and unclassified
+    // We'll check for cached classifications for all of them
+    const allUrls = graphData.nodes
+      .map((node) => node.data?.label)
+      .filter(Boolean) as string[];
+
+    if (allUrls.length === 0) return;
 
     // Add a small delay to prevent flickering during rapid updates
     const classificationTimeout = setTimeout(() => {
       const classifyNodes = async () => {
-        setIsClassifying(true);
+        // Don't set loading state if we're using all cached data
+        // This prevents nodes from briefly showing as unclassified during mode switches
+        if (nodesToClassify.length > 0) {
+          setIsClassifying(true);
+        }
 
         try {
-          // Extract URLs from nodes that need classification
-          const urls = graphData.nodes
-            .filter((node) => !node.data?.category)
-            .map((node) => node.data?.label)
-            .filter(Boolean) as string[];
+          // Default categories as fallback
+          const defaultCategories: Record<string, RouteCategory> = {
+            "/login": { category: "auth", description: "Login page" },
+            "/register": { category: "auth", description: "Registration page" },
+            "/dashboard": { category: "dashboard", description: "Main dashboard" },
+            "/profile": { category: "profile", description: "User profile" },
+            "/settings": { category: "settings", description: "User settings" },
+            "/products": { category: "product", description: "Product listing" },
+            "/": { category: "landing", description: "Homepage" },
+          };
 
-          if (urls.length === 0) return;
+          // Try to classify URLs - this now uses cache with our improved service
+          console.log("Getting classifications for URLs:", allUrls);
+          const classifications = await RouteClassifierService.classifyRoutes(allUrls);
+          
+          // Store in local state
+          setRouteCategories((prev) => ({ ...prev, ...classifications }));
 
-          console.log("Classifying URLs:", urls);
+          // Apply classifications to all nodes, preserving existing categories
+          const updatedNodes = nodes.map((node) => {
+            const url = node.data?.label as string;
+            
+            // If node already has a category and it's not "uncategorized", keep it
+            if (node.data?.category && node.data?.category !== "uncategorized") {
+              return node;
+            }
 
-          try {
-            // Use default categories if API fails
-            const defaultCategories: Record<string, RouteCategory> = {
-              "/login": { category: "auth", description: "Login page" },
-              "/register": {
-                category: "auth",
-                description: "Registration page",
+            let category, description;
+
+            // Check if we have a classification from cache/API
+            if (url && classifications[url]) {
+              category = classifications[url].category;
+              description = classifications[url].description;
+            } else {
+              // Try to match with default categories
+              for (const path in defaultCategories) {
+                if (url && url.includes(path)) {
+                  category = defaultCategories[path].category;
+                  description = defaultCategories[path].description;
+                  break;
+                }
+              }
+
+              // Use uncategorized as fallback
+              if (!category) {
+                category = "uncategorized";
+                description = "Uncategorized page";
+              }
+            }
+
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                category,
+                categoryDescription: description,
               },
-              "/dashboard": {
-                category: "dashboard",
-                description: "Main dashboard",
-              },
-              "/profile": { category: "profile", description: "User profile" },
-              "/settings": {
-                category: "settings",
-                description: "User settings",
-              },
-              "/products": {
-                category: "product",
-                description: "Product listing",
-              },
-              "/": { category: "landing", description: "Homepage" },
             };
+          });
 
-            // Try to classify URLs
-            const classifications =
-              await RouteClassifierService.classifyRoutes(urls);
-            setRouteCategories((prev) => ({ ...prev, ...classifications }));
-
-            // Update nodes with category information
-            const updatedNodes = nodes.map((node) => {
-              const url = node.data?.label as string;
-
-              // Skip if node already has a category
-              if (node.data?.category) return node;
-
-              let category, description;
-
-              // Check if we have a classification from API
-              if (url && classifications[url]) {
-                category = classifications[url].category;
-                description = classifications[url].description;
-              } else {
-                // Try to match with default categories
-                for (const path in defaultCategories) {
-                  if (url && url.includes(path)) {
-                    category = defaultCategories[path].category;
-                    description = defaultCategories[path].description;
-                    break;
-                  }
-                }
-
-                // Use uncategorized as fallback
-                if (!category) {
-                  category = "uncategorized";
-                  description = "Uncategorized page";
-                }
-              }
-
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  category,
-                  categoryDescription: description,
-                },
-              };
-            });
-
-            setNodes(updatedNodes);
-          } catch (error) {
-            console.error(
-              "API classification failed, using default categorization",
-            );
-
-            // Apply default categorization if API fails
-            const updatedNodes = nodes.map((node) => {
-              const url = node.data?.label as string;
-
-              // Skip if node already has a category
-              if (node.data?.category) return node;
-
-              let category = "uncategorized";
-              let description = "Uncategorized page";
-
-              if (url) {
-                if (
-                  url.includes("/login") ||
-                  url.includes("/signin") ||
-                  url.includes("/register")
-                ) {
-                  category = "auth";
-                  description = "Authentication page";
-                } else if (url.includes("/dashboard")) {
-                  category = "dashboard";
-                  description = "Dashboard page";
-                } else if (url.includes("/product")) {
-                  category = "product";
-                  description = "Product page";
-                } else if (url.includes("/profile")) {
-                  category = "profile";
-                  description = "Profile page";
-                } else if (url === "/" || url.endsWith(".html")) {
-                  category = "landing";
-                  description = "Landing page";
-                }
-              }
-
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  category,
-                  categoryDescription: description,
-                },
-              };
-            });
-
-            setNodes(updatedNodes);
-          }
+          setNodes(updatedNodes);
         } catch (error) {
           console.error("Error during classification process:", error);
+          
+          // Apply default categorization as fallback
+          const updatedNodes = nodes.map((node) => {
+            const url = node.data?.label as string;
+
+            // Skip if node already has a non-uncategorized category
+            if (node.data?.category && node.data?.category !== "uncategorized") {
+              return node;
+            }
+
+            let category = "uncategorized";
+            let description = "Uncategorized page";
+
+            if (url) {
+              if (url.includes("/login") || url.includes("/signin") || url.includes("/register")) {
+                category = "auth";
+                description = "Authentication page";
+              } else if (url.includes("/dashboard")) {
+                category = "dashboard";
+                description = "Dashboard page";
+              } else if (url.includes("/product")) {
+                category = "product";
+                description = "Product page";
+              } else if (url.includes("/profile")) {
+                category = "profile";
+                description = "Profile page";
+              } else if (url === "/" || url.endsWith(".html")) {
+                category = "landing";
+                description = "Landing page";
+              }
+            }
+
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                category,
+                categoryDescription: description,
+              },
+            };
+          });
+
+          setNodes(updatedNodes);
         } finally {
           setIsClassifying(false);
         }
       };
 
       classifyNodes();
-    }, 500);
+    }, 10); // Reduced delay since we're using cache
 
     return () => clearTimeout(classificationTimeout);
   }, [graphData?.nodes]);
 
-  // Update nodes when graphData changes
+  // Update nodes when graphData changes with immediate layout
   useEffect(() => {
-    console.log("GraphData update triggered:", {
-      hasGraphData: !!graphData,
-      nodesCount: graphData?.nodes?.length || 0,
-      edgesCount: graphData?.edges?.length || 0
-    });
+    if (!graphData?.nodes?.length) return;
 
-    if (!graphData) {
-      console.warn("No graph data available");
-      return;
-    }
+    // Track if we have new nodes
+    const existingNodeIds = new Set(nodes.map(node => node.id));
+    const hasNewNodes = graphData.nodes.some(node => !existingNodeIds.has(node.id));
 
-    // Validate graph data structure
-    if (!Array.isArray(graphData.nodes) || !Array.isArray(graphData.edges)) {
-      console.error("Invalid graph data structure:", graphData);
-      return;
-    }
-
-    // Map of current node IDs to their categories and descriptions
+    // Map existing categories
     const categoryMap = new Map();
     nodes.forEach((node) => {
       if (node.id && node.data?.category) {
@@ -469,6 +484,7 @@ export function ExploreGraph() {
       }
     });
 
+    // Convert and categorize new nodes
     const newNodes = convertToNodes(graphData.nodes).map((node) => {
       if (node.id && categoryMap.has(node.id)) {
         // Preserve category info for existing nodes
@@ -485,20 +501,60 @@ export function ExploreGraph() {
       return node;
     });
 
-    setNodes(newNodes);
-    setEdges(
-      graphData.edges
-        ? (graphData.edges.map((edge) => ({
+    // If we have new nodes, trigger immediate layout
+    if (hasNewNodes) {
+      // Group nodes by category for layout
+      const categorizedNodes = newNodes.reduce((acc, node) => {
+        const category = (node.data?.category as string)?.toLowerCase() || "uncategorized";
+        if (!acc[category]) acc[category] = [];
+        acc[category].push(node);
+        return acc;
+      }, {} as Record<string, Node[]>);
+
+      // Position nodes in grid layout
+      const layoutedNodes: Node[] = [];
+      let yOffset = 0;
+      
+      Object.entries(categorizedNodes).forEach(([category, nodes]) => {
+        const nodesPerRow = 3;
+        const nodeWidth = 170;
+        const nodeHeight = 150;
+        const horizontalPadding = 30;
+
+        nodes.forEach((node, index) => {
+          const row = Math.floor(index / nodesPerRow);
+          const col = index % nodesPerRow;
+          layoutedNodes.push({
+            ...node,
+            position: {
+              x: col * (nodeWidth + horizontalPadding),
+              y: yOffset + row * (nodeHeight + 20)
+            }
+          });
+        });
+        
+        const rows = Math.ceil(nodes.length / nodesPerRow);
+        yOffset += rows * (nodeHeight + 20) + 150;
+      });
+
+      // Update edges with consistent styling
+      const newEdges = graphData.edges
+        ? graphData.edges.map(edge => ({
             ...edge,
+            id: edge.id || `edge-${Math.random().toString(36).substr(2, 9)}`,
             animated: true,
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-            },
+            markerEnd: { type: MarkerType.ArrowClosed },
             style: { stroke: "#555" },
-          })) as unknown as Edge[])
-        : [],
-    );
-  }, [graphData, convertToNodes]);
+            type: "default",
+          })) as Edge[]
+        : [];
+
+      // Apply updates immediately
+      setNodes(layoutedNodes);
+      setEdges(newEdges);
+    }
+
+  }, [graphData, convertToNodes, nodes]);
 
   // Completely redesigned node layout by category
   useEffect(() => {
@@ -617,7 +673,7 @@ export function ExploreGraph() {
     // Update edges with curved lines and better overlap handling
     const updatedEdges = edges.map((edge) => ({
       ...edge,
-      type: "bezier", // Change to smoothstep for curved edges
+      type: "default", // Change to smoothstep for curved edges
       animated: true,
       markerEnd: {
         type: MarkerType.ArrowClosed,
@@ -758,7 +814,7 @@ export function ExploreGraph() {
 
       // Update category containers with new positions
       setCategoryContainers(newCategoryNodes);
-    }, 200); // 200ms debounce
+    }, 10); // 200ms debounce
 
     return () => {
       if (updateTimerRef.current) {
@@ -777,7 +833,7 @@ export function ExploreGraph() {
 
         return {
           ...edge,
-          type: "bezier",
+          type: "default",
           animated: true,
           markerEnd: {
             type: MarkerType.ArrowClosed,
@@ -802,16 +858,31 @@ export function ExploreGraph() {
 
   return (
     <div style={{ width: "100%", height: "100%" }}>
-      {(!graphData?.nodes || graphData.nodes.length === 0) ? (
-        <div className="flex flex-col items-center justify-center h-full text-gray-400">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+      {!graphData?.nodes || graphData.nodes.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-full bg-[#141414] text-gray-200">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-16 w-16 mb-4 text-blue-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+            />
           </svg>
-          <p className="text-xl font-light">No exploration data available</p>
-          <p className="text-sm mt-2">Start exploring a website to build the graph</p>
-          <button 
+          <p className="text-xl font-light text-gray-300">
+            No exploration data available
+          </p>
+          <p className="text-sm mt-2 text-gray-400">
+            Start exploring a website to build the graph
+          </p>
+          <button
             onClick={() => setShowGraph(false)}
-            className="mt-6 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            className="mt-6 px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800 transition-colors shadow-lg"
           >
             Return to Preview
           </button>
@@ -843,39 +914,39 @@ export function ExploreGraph() {
           nodesFocusable={true}
           edgesFocusable={true}
         >
-        <Panel position="top-right" className="mr-4 mt-4">
-          <FloatingGraphToggle />
-        </Panel>
+          <Panel position="top-right" className="mr-4 mt-4">
+            <FloatingGraphToggle />
+          </Panel>
 
-        <Panel
-          position="top-left"
-          className="bg-background/95 p-3 rounded shadow-lg border border-border/50"
-        >
-          <h3 className="text-white text-md font-light mb-2">
-            Sitemap: Route Categories
-          </h3>
-          {isClassifying ? (
-            <div className="text-white text-sm">Classifying routes...</div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {categoryList.map((category) => (
-                <div
-                  key={category}
-                  className="flex items-center text-sm text-white font-light"
-                >
-                  <span
-                    className="inline-block w-3 h-3 mr-1 rounded-sm"
-                    style={{ backgroundColor: getCategoryColor(category) }}
-                  />
-                  {category}
-                </div>
-              ))}
-              {categoryList.length === 0 && (
-                <div className="text-white text-sm">No categories found</div>
-              )}
-            </div>
-          )}
-        </Panel>
+          <Panel
+            position="top-left"
+            className="bg-background/95 p-3 rounded shadow-lg border border-border/50"
+          >
+            <h3 className="text-white text-md font-light mb-2">
+              Sitemap: Route Categories
+            </h3>
+            {isClassifying ? (
+              <div className="text-white text-sm">Classifying routes...</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {categoryList.map((category) => (
+                  <div
+                    key={category}
+                    className="flex items-center text-sm text-white font-light"
+                  >
+                    <span
+                      className="inline-block w-3 h-3 mr-1 rounded-sm"
+                      style={{ backgroundColor: getCategoryColor(category) }}
+                    />
+                    {category}
+                  </div>
+                ))}
+                {categoryList.length === 0 && (
+                  <div className="text-white text-sm">No categories found</div>
+                )}
+              </div>
+            )}
+          </Panel>
           <Controls />
           <Background />
         </ReactFlow>
