@@ -12,7 +12,7 @@ export const config: Config = {
     excludedFolders: [".git", "node_modules", ".DS_Store"], // Folders to exclude from listing
   },
   llm: {
-    provider: (process.env.LLM_PROVIDER || "anthropic") as
+    provider: (process.env.LLM_PROVIDER || "gemini") as
       | "anthropic"
       | "openai"
       | "azure-openai"
@@ -61,19 +61,21 @@ export const config: Config = {
           "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
       },
     },
+    // In config/index.ts
     gemini: {
-      apiKey: process.env.GEMINI_API_KEY,
-      model: process.env.GEMINI_MODEL || "gemini-pro",
-      visionModel: process.env.GEMINI_VISION_MODEL || "gemini-pro-vision",
-      contextConfig: {
-        minMessages: 10,
-        contextReservePercentage: 20,
-        modelContextWindows: {
-          "gemini-pro": 32000,
-          "gemini-pro-vision": 32000,
+        apiKey: process.env.GEMINI_API_KEY,
+        model: process.env.GEMINI_MODEL || "gemini-pro",
+        visionModel: process.env.GEMINI_VISION_MODEL || "gemini-1.5-flash", // Change from gemini-pro-vision to gemini-1.5-flash
+        contextConfig: {
+            minMessages: 10,
+            contextReservePercentage: 20,
+            modelContextWindows: {
+                "gemini-pro": 32000,
+                "gemini-1.5-flash": 32000, // Add this line
+            },
         },
-      },
     },
+    
   },
   streamConfig: {
     keepAliveInterval: 60_000, // 60 seconds

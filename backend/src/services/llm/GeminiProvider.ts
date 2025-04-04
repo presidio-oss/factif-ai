@@ -132,7 +132,7 @@ export class GeminiProvider implements LLMProvider {
     }
   }
 
-  async processStream(
+async processStream(
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -152,22 +152,20 @@ export class GeminiProvider implements LLMProvider {
           { text: systemPrompt },
           ...(imageData.image.length > 0
             ? [
-              {
-                inlineData: {
-                  mimeType: "image/jpeg",
-                  data: Buffer.from(imageData.image, "base64").toString(
-                    "base64"
-                  )
+                {
+                  inlineData: {
+                    mimeType: "image/png", // Corrected mime type
+                    data: imageData.image.replace(/^data:image\/png;base64,/, "") // Removed redundant conversion
+                  }
                 }
-              }
-            ]
+              ]
             : []),
           ...(imageData.inference.length > 0
             ? [
-              {
-                text: addElementsList(imageData.inference)
-              }
-            ]
+                {
+                  text: addElementsList(imageData.inference)
+                }
+              ]
             : []),
           { text: message }
         ]);
