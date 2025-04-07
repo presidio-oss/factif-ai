@@ -79,7 +79,7 @@ export class PuppeteerService extends BaseStreamingService {
         PuppeteerService.isShuttingDown = false;
       }
 
-      // Launch with optimized settings to reduce resource usage
+      // Launch with enhanced stealth settings to avoid bot detection while using moderate resources
       PuppeteerService.browser = await chromium.launch({
         headless: true,
         args: [
@@ -90,11 +90,106 @@ export class PuppeteerService extends BaseStreamingService {
           '--disable-extensions',       // Disable extensions to reduce memory usage 
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
-          '--disable-component-extensions-with-background-pages'
+          '--disable-component-extensions-with-background-pages',
+          '--disable-blink-features=AutomationControlled',  // Hide automation flags
+          '--disable-features=IsolateOrigins,site-per-process', // Disable site isolation
+          '--window-size=1366,768'     // Common laptop resolution, not too resource intensive
         ]
       });
 
-      const context = await PuppeteerService.browser.newContext();
+      // Common user agents for rotation
+      const userAgents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15'
+      ];
+      
+      // Select a random user agent
+      const randomUserAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
+      
+      // Create context with anti-fingerprinting measures
+      const context = await PuppeteerService.browser.newContext({
+        viewport: { width: 1366, height: 768 }, // Common laptop resolution
+        userAgent: randomUserAgent,
+        deviceScaleFactor: 1,
+        locale: 'en-US',
+        timezoneId: 'America/New_York',
+        colorScheme: 'light'
+      });
+      
+      // Add anti-fingerprinting measures to mask automation
+      await context.addInitScript(() => {
+        // Override properties that automation detection looks for
+        Object.defineProperty(navigator, 'webdriver', {
+          get: () => false,
+          configurable: true
+        });
+        
+        // Override Chrome runtime
+        // @ts-ignore - Chrome object is not defined in standard Window type
+        window.chrome = {
+          runtime: {},
+          loadTimes: function() {},
+          csi: function() {},
+          app: {}
+        };
+        
+        // Add fake plugins to make fingerprint more normal
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => {
+            return [
+              {
+                0: {type: "application/pdf"},
+                name: "Chrome PDF Plugin",
+                description: "Portable Document Format",
+                filename: "internal-pdf-viewer"
+              },
+              {
+                0: {type: "application/x-google-chrome-pdf"},
+                name: "Chrome PDF Viewer",
+                description: "Portable Document Format"
+              },
+              {
+                0: {type: "application/x-nacl"},
+                name: "Native Client"
+              }
+            ];
+          },
+          configurable: true
+        });
+        
+        // Add language settings that look normal
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['en-US', 'en'],
+          configurable: true
+        });
+        
+        // Modify navigator properties that are used for fingerprinting
+        const navigatorProps = {
+          'hardwareConcurrency': 8,
+          'deviceMemory': 8,
+          'platform': 'Win32'
+        };
+        
+        for (const [prop, value] of Object.entries(navigatorProps)) {
+          if (prop in navigator) {
+            Object.defineProperty(navigator, prop, {
+              get: () => value,
+              configurable: true
+            });
+          }
+        }
+        
+        // Hide automation-related objects
+        if (window.Notification) {
+          Object.defineProperty(window.Notification, 'permission', {
+            get: () => 'default',
+            configurable: true
+          });
+        }
+      });
+      
       PuppeteerService.page = await context.newPage();
       
       // Configure page to intercept new tab navigations
@@ -146,6 +241,37 @@ export class PuppeteerService extends BaseStreamingService {
     }
   }
 
+  /**
+   * Simulate human-like behavior with random delays and mouse movements
+   * @param page The Playwright Page object to interact with
+   */
+  private async simulateHumanBehavior(page: Page): Promise<void> {
+    try {
+      // Random delay (300-800ms)
+      const delay = Math.floor(Math.random() * 500) + 300;
+      await page.waitForTimeout(delay);
+      
+      // Only move mouse sometimes (70% of the time)
+      if (Math.random() < 0.7) {
+        // Get viewport dimensions
+        const viewport = page.viewportSize();
+        if (!viewport) return;
+        
+        // Generate random coordinates within viewport
+        const x = Math.floor(Math.random() * viewport.width);
+        const y = Math.floor(Math.random() * viewport.height);
+        
+        // Move mouse with a humanlike motion (use steps param for smooth movement)
+        await page.mouse.move(x, y, {
+          steps: Math.floor(Math.random() * 5) + 3 // 3-7 steps for realistic movement
+        });
+      }
+    } catch (error) {
+      // Silently fail - human behavior simulation is optional
+      // If it fails, we'll just continue without it
+    }
+  }
+
   async performAction(
     action: ActionRequest,
     params?: any
@@ -162,6 +288,11 @@ export class PuppeteerService extends BaseStreamingService {
           status: "error",
           message: "Browser not launched. Please launch the browser first.",
         };
+      }
+      
+      // For interactive actions, simulate human behavior first
+      if (['click', 'type', 'hover', 'scroll_up', 'scroll_down'].includes(action.action)) {
+        await this.simulateHumanBehavior(PuppeteerService.page);
       }
 
       // Handle actions
@@ -435,7 +566,23 @@ export class PuppeteerService extends BaseStreamingService {
       console.log("[FactifAI] Link click interception enabled for single-tab navigation");
     });
     
-    // 3. Set up page route handler for blocking ad domains and handling downloads
+    // 3. Set HTTP headers to look like a real browser and avoid bot detection
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+      'Sec-Ch-Ua': '"Chromium";v="122"',
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': '"Windows"',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+    });
+    
+    // 4. Set up page route handler for blocking ad domains, handling downloads and modifying requests
     await page.route('**/*', async (route) => {
       try {
         // Common ad/tracking domains that might cause connection issues
@@ -460,6 +607,15 @@ export class PuppeteerService extends BaseStreamingService {
           // Abort the request instead of fetching it
           await route.abort('blockedbyclient');
           return;
+        }
+        
+        // Add referrer header for navigation to appear more natural
+        // Only do this for same-origin navigation
+        const headers = route.request().headers();
+        if (this.lastKnownUrl && 
+            urlObj.origin === new URL(this.lastKnownUrl).origin &&
+            route.request().resourceType() === 'document') {
+          headers['Referer'] = this.lastKnownUrl;
         }
         
         // Handle the fetch with timeout
@@ -976,11 +1132,77 @@ export class PuppeteerService extends BaseStreamingService {
     const prioritizedInput = visibleInputElements
       .slice(0, MAX_INPUT);
 
-    // Return the filtered elements
+          // Return the filtered elements
     return {
       clickableElements: prioritizedClickable,
       inputElements: prioritizedInput
     };
+  }
+  
+  /**
+   * Detect if a CAPTCHA is present on the current page
+   * @returns True if a CAPTCHA is detected, false otherwise
+   */
+  async detectCaptcha(): Promise<boolean> {
+    if (!PuppeteerService.page) return false;
+    
+    try {
+      // Check for common CAPTCHA indicators
+      const hasCaptcha = await PuppeteerService.page.evaluate(() => {
+        // Common CAPTCHA selectors
+        const captchaSelectors = [
+          // Google reCAPTCHA
+          '.g-recaptcha',
+          'iframe[src*="recaptcha"]',
+          'iframe[src*="google.com/recaptcha"]',
+          // hCaptcha
+          '.h-captcha',
+          'iframe[src*="hcaptcha.com"]',
+          // Cloudflare Turnstile
+          '.cf-turnstile',
+          'iframe[src*="challenges.cloudflare.com"]',
+          // Text-based detection
+          'form:has(input[name*="captcha"])',
+          'div:has([id*="captcha"])',
+          'img[src*="captcha"]'
+        ];
+        
+        // Check for captcha text
+        const bodyText = document.body.innerText.toLowerCase();
+        const captchaTextIndicators = [
+          'captcha',
+          'human verification',
+          'i\'m not a robot',
+          'verify you are human',
+          'security check'
+        ];
+        
+        // Check if any selector matches
+        const selectorMatch = captchaSelectors.some(selector => {
+          try {
+            return document.querySelector(selector) !== null;
+          } catch {
+            return false;
+          }
+        });
+        
+        // Check if any text indicator is present
+        const textMatch = captchaTextIndicators.some(text => 
+          bodyText.includes(text)
+        );
+        
+        return selectorMatch || textMatch;
+      });
+      
+      if (hasCaptcha) {
+        this.emitConsoleLog("warn", "CAPTCHA detected on page - may require human intervention");
+      }
+      
+      return hasCaptcha;
+    } catch (error) {
+      this.emitConsoleLog("error", `Error detecting CAPTCHA: ${error}`);
+      return false;
+    }
   }
 
   async markElements(
