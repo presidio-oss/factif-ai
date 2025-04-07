@@ -2,13 +2,13 @@ import { KeyboardEvent, useRef, useState } from "react";
 import { ChatInputProps } from "../../types/chat.types";
 import { SendIcon } from "../Icons/SendIcon";
 import { StopIcon } from "../Icons/StopIcon";
-import { Input, Button } from "@nextui-org/react";
+import { Textarea, Button } from "@nextui-org/react";
 import { useAppContext } from "../../contexts/AppContext";
 
 export const ChatInput = ({ onSendMessage, isStreaming, onStopStreaming }: ChatInputProps) => {
   const { hasActiveAction } = useAppContext();
   const [message, setMessage] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSendMessage = () => {
     const trimmedMessage = message.trim();
@@ -22,8 +22,9 @@ export const ChatInput = ({ onSendMessage, isStreaming, onStopStreaming }: ChatI
     }
   };
 
-  const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
+  const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
       handleSendMessage();
     }
   };
@@ -31,22 +32,21 @@ export const ChatInput = ({ onSendMessage, isStreaming, onStopStreaming }: ChatI
   return (
     <div className="py-4">
       <div className="flex gap-2 items-center">
-        <Input
+        <Textarea
           ref={inputRef}
-          type="text"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          onKeyPress={handleKeyPress}
+          onKeyDown={(e) => handleKeyPress(e as KeyboardEvent<HTMLTextAreaElement>)}
           placeholder={isStreaming ? "Waiting for response..." : "Type a message..."}
           classNames={{
-            base: "h-12",
+            base: "min-h-12",
             input: [
               "text-foreground",
               "placeholder:text-foreground-500",
               "!text-base"
             ],
             inputWrapper: [
-              "h-12",
+              "min-h-12",
               "bg-content2/50",
               "hover:bg-content2",
               "group-data-[focused=true]:bg-content2",
@@ -60,6 +60,8 @@ export const ChatInput = ({ onSendMessage, isStreaming, onStopStreaming }: ChatI
           radius="lg"
           isDisabled={isStreaming}
           fullWidth
+          minRows={1}
+          maxRows={6}
         />
         <Button
           onPress={isStreaming ? onStopStreaming : handleSendMessage}

@@ -117,7 +117,8 @@ NEVER send a response with multiple tool uses.
    - Document unexpected states
    - Complete all steps sequentially
    - Never skip confirmation steps
-
+   - Indicate each step status with prefix ✅ or ❌ to show success or failure after completion
+ 
 4. Tool Selection
    - Choose ONE appropriate tool
    - Base choice on current state
@@ -262,7 +263,7 @@ Important Notes:
 - Puppeteer: Must start with 'launch' if no screenshot exists
 - Docker: Always analyze screenshot first, no 'launch' action needed
 - Strictly use only one action per response and wait for the "Action Result" before proceeding.
-
+- Indicate the status of each test-step with ✅ or ❌ in the beginning to indicate success or failure. (e.g. ✅ Step 1: Click on the button and verify the result)
 `;
 
 const getSystemPrompt = (
