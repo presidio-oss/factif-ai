@@ -33,51 +33,9 @@ export class MessageProcessor {
 
     if (action) {
       try {
-        // If action is not "launch" but we detect a URL in the message,
-        // we should launch the browser first
-        if (action.action !== "launch" && 
-            (chunk.includes("http://") || chunk.includes("https://") || 
-             /\b[a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)\b/i.test(chunk))) {
-          
-          // Extract URL from the message
-          let urlMatch = chunk.match(/(https?:\/\/[^\s'"]+)/i);
-          
-          // If no http/https URL, try to detect domain names like example.com
-          // Use negative lookbehind (?<!@) to avoid matching domains in email addresses
-          if (!urlMatch) {
-            urlMatch = chunk.match(/(?<!@)\b([a-z0-9-]+\.(com|org|net|io|dev|edu|gov|co|app)[^\s'"]*)\b/i);
-            if (urlMatch) {
-              // Prepend https:// to the domain
-              urlMatch[1] = `https://${urlMatch[1]}`;
-            }
-          }
-          
-          // Skip auto-launching if we're in a type action for an email field
-          if (action.action === "type" && 
-              (action.text?.includes("@") || 
-               /email|mail|e-mail/i.test(chunk))) {
-            urlMatch = null;
-          }
-          if (urlMatch && urlMatch[1]) {
-            console.log("Auto-launching browser with URL:", urlMatch[1]);
-            
-            // Create a launch action and execute it first
-            const launchAction = {
-              type: "perform_action",
-              action: "launch",
-              url: urlMatch[1],
-            };
-            
-            try {
-              MessageProcessor.setHasActiveAction?.(true);
-              await executeAction(launchAction, source);
-              console.log("Browser launched automatically");
-            } catch (error) {
-              console.error("Failed to auto-launch browser:", error);
-              // Continue with original action even if auto-launch failed
-            }
-          }
-        }
+        // Only execute actions that are explicitly requested by the LLM
+        // Browser will only launch when there's a specific "launch" action
+        // This prevents unexpected browser reinitializations during chat
         
         MessageProcessor.setHasActiveAction?.(true);
         const response = await executeAction(action, source);
