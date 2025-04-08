@@ -291,7 +291,7 @@ export class PuppeteerService extends BaseStreamingService {
       }
       
       // For interactive actions, simulate human behavior first
-      if (['click', 'type', 'hover', 'scroll_up', 'scroll_down'].includes(action.action)) {
+      if (['click', 'type', 'hover', 'scrollUp', 'scrollDown'].includes(action.action)) {
         await this.simulateHumanBehavior(PuppeteerService.page);
       }
 

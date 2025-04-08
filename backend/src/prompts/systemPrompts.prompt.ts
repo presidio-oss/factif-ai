@@ -222,7 +222,7 @@ Common Actions (Both Sources):
         - Use with the \`key\` parameter to specify the key (e.g., "Enter", "Backspace", "Tab").
         - Only use on clearly interactive elements.
         - Common uses: form submission, text deletion, navigation.
-    * scroll_down/scroll_up: Scroll the viewport.
+    * scrollDown/scrollUp: Scroll the viewport.
         - Use when elements are partially or fully obscured.
         - Always verify element visibility after scrolling.
         - Aim to fully reveal the target element.
@@ -281,7 +281,7 @@ const getSystemPrompt = (
   return `${prompt}\n\n# Environment Context\nSource: ${source}
   ${(imageData?.inference as IClickableElement[]).length > 0 ? `element_list: \n${convertElementsToInput(imageData?.inference as IClickableElement[])}\n\n` : ""}
   ${omniParserResult ? `element_list: \n${addOmniParserResults(omniParserResult)}`: ''}
-   To explore more use scroll_down or scroll_up based on your requirement.`;
+   To explore more use scrollDown or scrollUp based on your requirement.`;
 };
 
 export const SYSTEM_PROMPT = getSystemPrompt;

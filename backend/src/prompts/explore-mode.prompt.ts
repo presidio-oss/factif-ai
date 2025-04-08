@@ -95,7 +95,7 @@ Common Actions (Both Sources):
         - Use with the \`key\` parameter to specify the key (e.g., "Enter", "Backspace", "Tab").
         - Only use on clearly interactive elements.
         - Common uses: form submission, text deletion, navigation.
-    * scroll_down/scroll_up: Scroll the viewport.
+    * scrollDown/scrollUp: Scroll the viewport.
         - Use when elements are partially or fully obscured.
         - Always verify element visibility after scrolling.
         - Scroll repeatedly to ensure you've seen ALL elements on the page.
@@ -121,7 +121,7 @@ Important Notes:
 
 Usage:
 <perform_action>
-<action>Action to perform (e.g., launch, doubleClick, click, type, scroll_down, scroll_up, keyPress)</action>
+<action>Action to perform (e.g., launch, doubleClick, click, type, scrollDown, scrollUp, keyPress)</action>
 <url>URL to launch the browser at (optional)</url>
 <coordinate>x,y coordinates (optional)</coordinate>
 <text>Text to type (optional)</text>

@@ -362,10 +362,10 @@ export class DockerActions {
             };
           }
           break;
-        case "scroll_up":
+        case "scrollUp":
           result = await DockerActions.scroll(containerId, "up");
           break;
-        case "scroll_down":
+        case "scrollDown":
           result = await DockerActions.scroll(containerId, "down");
           break;
         case "getUrl":
