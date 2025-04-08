@@ -349,10 +349,10 @@ export class PuppeteerService extends BaseStreamingService {
         case "type":
           return await PuppeteerActions.type(PuppeteerService.page, action);
           
-        case "scroll_up":
+        case "scrollUp":
           return await PuppeteerActions.scrollUp(PuppeteerService.page);
           
-        case "scroll_down":
+        case "scrollDown":
           return await PuppeteerActions.scrollDown(PuppeteerService.page);
           
         case "keyPress":

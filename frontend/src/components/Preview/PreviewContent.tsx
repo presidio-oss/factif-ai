@@ -16,6 +16,7 @@ export const PreviewContent = ({
       onClick={interactiveMode ? handleInteraction : undefined}
       onKeyDown={interactiveMode ? handleInteraction : undefined}
       onMouseMove={interactiveMode ? handleInteraction : undefined}
+      onWheel={interactiveMode ? handleInteraction : undefined}
       tabIndex={interactiveMode ? 0 : undefined}
     >
       <div className="text-gray-300 h-full flex items-center justify-center p-4 max-w-full">

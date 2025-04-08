@@ -35,7 +35,7 @@ export class UIInteractionService {
   private _waitTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private _loadingDetectionConfig: LoadingDetectionConfig = {
     maxWaitTime: 30000,       // 30 seconds default max wait time
-    pollingInterval: 500,     // Check every 500ms
+    pollingInterval: 250,     // Check every 250ms
     loadingIndicators: [
       '.loading', 
       '.spinner', 
@@ -43,7 +43,10 @@ export class UIInteractionService {
       '.progress',
       '.loader',
       '[role="progressbar"]',
-      // Add more common loading indicator selectors
+      '.fa-spin',
+      '.spinning',
+      '.rotate'
+      // Common loading indicator selectors
     ]
   };
 
@@ -435,6 +438,11 @@ export class UIInteractionService {
     this.consoleService.emitConsoleEvent("info", `Key pressed: ${event.key}`);
   }
 
+  // Throttle state for scroll events
+  private _scrollThrottleTimeout: ReturnType<typeof setTimeout> | null = null;
+  private _lastScrollTime: number = 0;
+  private _scrollThrottleDelay: number = 300; // ms between scroll actions
+  
   handleScrollInteraction(event: WheelEvent) {
     const socket = SocketService.getInstance().getSocket();
     if (
@@ -442,15 +450,34 @@ export class UIInteractionService {
       !this.interactiveModeEnabled
     )
       return;
-
+    
+    // Prevent scroll events from firing too rapidly
+    const now = Date.now();
+    if (now - this._lastScrollTime < this._scrollThrottleDelay) {
+      // Too soon since last scroll - ignore this event
+      return;
+    }
+    
+    // Clear any existing timeout
+    if (this._scrollThrottleTimeout) {
+      clearTimeout(this._scrollThrottleTimeout);
+    }
+    
     const direction = event.deltaY > 0 ? "down" : "up";
-
-    this.emitBrowserAction({
-      action: "scroll",
-      params: { direction },
-    });
-
-    this.consoleService.emitConsoleEvent("info", `Scroll ${direction}`);
+    const actionType = event.deltaY > 0 ? "scrollDown" : "scrollUp";
+    
+    // Update last scroll time
+    this._lastScrollTime = now;
+    
+    // Use throttle timeout to delay execution slightly and prevent multiple rapid scrolls
+    this._scrollThrottleTimeout = setTimeout(() => {
+      this.emitBrowserAction({
+        action: actionType,
+        params: {},
+      });
+      
+      this.consoleService.emitConsoleEvent("info", `Scroll ${direction}`);
+    }, 50); // Small delay to batch rapid scroll events
   }
 
   cleanup() {
@@ -564,7 +591,7 @@ export class UIInteractionService {
 
     return new Promise<void>((resolve, reject) => {
       this.actionPerformedResolve = resolve;
-      let timeoutId: number;
+      let timeoutId: ReturnType<typeof setTimeout>;
 
       const clearTimeoutAndResolve = () => {
         clearTimeout(timeoutId);
@@ -706,13 +733,12 @@ export class UIInteractionService {
           }
           break;
 
-        case "scroll_down":
-        case "scroll_up":
-          const direction =
-            action.toLowerCase() === "scroll_down" ? "down" : "up";
+        case "scrollDown":
+        case "scrollUp":
+          const direction = action.toLowerCase() === "scrolldown" ? "down" : "up";
           this.emitBrowserAction({
-            action: "scroll",
-            params: { direction },
+            action: action,
+            params: {},
           });
           this.consoleService.emitConsoleEvent("info", `Scroll ${direction}`);
           break;
