@@ -36,7 +36,8 @@ export class MessageProcessor {
         // Only execute actions that are explicitly requested by the LLM
         // Browser will only launch when there's a specific "launch" action
         // This prevents unexpected browser reinitializations during chat
-        
+        // URLMessage component also checks isBrowserStarted() to avoid reinitializing
+
         MessageProcessor.setHasActiveAction?.(true);
         const response = await executeAction(action, source);
         MessageProcessor.setHasActiveAction?.(false);
