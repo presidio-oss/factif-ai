@@ -54,6 +54,7 @@ export class ExploreController {
             folderPath,
           ),
         ChatService.processMessage(
+          currentChatId,
           res,
           message,
           history,

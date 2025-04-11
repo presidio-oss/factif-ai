@@ -25,7 +25,7 @@ export class ChatService {
     
     // Store the current mode
     this.currentMode = mode;
-    
+    console.log('LLM Provider: ',config.llm.provider);
     if (mode === Modes.REGRESSION) {
       switch (config.llm.provider) {
         case "openai":
@@ -64,6 +64,7 @@ export class ChatService {
   }
 
   static async processMessage(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -104,6 +105,7 @@ export class ChatService {
     try {
       // Stream the response from the LLM provider with optional image data
       await this.provider.streamResponse(
+        currentChatId,
         res,
         message,
         trimmedHistory,

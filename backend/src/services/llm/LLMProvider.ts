@@ -6,6 +6,7 @@ import { ExploreActionTypes, Modes } from "../../types";
 
 export interface LLMProvider {
   streamResponse(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[],

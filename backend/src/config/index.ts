@@ -64,7 +64,7 @@ export const config: Config = {
     gemini: {
       apiKey: process.env.GEMINI_API_KEY,
       model: process.env.GEMINI_MODEL || "gemini-pro",
-      visionModel: process.env.GEMINI_VISION_MODEL || "gemini-pro-vision",
+      visionModel: process.env.GEMINI_VISION_MODEL || "gemini-2.0-flash",
       contextConfig: {
         minMessages: 10,
         contextReservePercentage: 20,

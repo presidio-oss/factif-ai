@@ -159,6 +159,7 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
   }
 
   async streamResponse(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -177,6 +178,7 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
     let isRetrySuccessful = false;
     for (let _ of retryArray) {
       isRetrySuccessful = await this.processStream(
+        currentChatId,
         res,
         message,
         history,
@@ -201,6 +203,7 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
   }
 
   async processStream(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],

@@ -159,6 +159,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
   async processStreamResponse(
     stream: any,
     res: Response,
+    currentChatId: string,
     imageData?: IProcessedScreenshot,
     source?: StreamingSource
   ): Promise<void> {
@@ -206,6 +207,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
    * @return {Promise<void>} Resolves when the streaming process is complete or fails after exhausting retry attempts.
    */
   async streamResponse(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -224,6 +226,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     let isRetrySuccessful = false;
     for (let _ of retryArray) {
       isRetrySuccessful = await this.processStream(
+        currentChatId,
         res,
         message,
         history,
@@ -261,6 +264,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
    * @return {Promise<boolean>} A promise that resolves to true if the stream is processed successfully; otherwise, false.
    */
   async processStream(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -314,7 +318,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       logMessageRequest(messageRequest);
 
       const stream = await this.client.messages.create(messageRequest);
-      await this.processStreamResponse(stream, res, imageData, source);
+      await this.processStreamResponse(stream, res, currentChatId, imageData, source);
       return true;
     } catch (error) {
       console.log(error);
