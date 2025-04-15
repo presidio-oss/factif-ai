@@ -26,6 +26,7 @@ type AnthropicConfig = LLMProviderConfig & {
     credentials: {
       accessKeyId?: string;
       secretAccessKey?: string;
+      sessionToken?: string;
     };
     modelId: string;
   };

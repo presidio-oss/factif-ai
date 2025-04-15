@@ -23,7 +23,8 @@ export class AnthropicProvider implements LLMProvider {
       this.client = new AnthropicBedrock({
         awsRegion: config.llm.anthropic.bedrock.region,
         awsAccessKey: config.llm.anthropic.bedrock.credentials.accessKeyId,
-        awsSecretKey: config.llm.anthropic.bedrock.credentials.secretAccessKey
+        awsSecretKey: config.llm.anthropic.bedrock.credentials.secretAccessKey,
+        awsSessionToken: config.llm.anthropic.bedrock.credentials.sessionToken,
       });
     } else {
       this.client = new Anthropic({

@@ -25,6 +25,7 @@ export class RouteClassifierService {
         awsRegion: config.llm.anthropic.bedrock.region,
         awsAccessKey: config.llm.anthropic.bedrock.credentials.accessKeyId,
         awsSecretKey: config.llm.anthropic.bedrock.credentials.secretAccessKey,
+        awsSessionToken: config.llm.anthropic.bedrock.credentials.sessionToken,
       });
     } else {
       this.client = new Anthropic({
@@ -59,7 +60,8 @@ export class RouteClassifierService {
         (!config.llm.anthropic.apiKey && !config.llm.anthropic.useBedrock) ||
         (config.llm.anthropic.useBedrock &&
           (!config.llm.anthropic.bedrock.credentials.accessKeyId ||
-            !config.llm.anthropic.bedrock.credentials.secretAccessKey))
+            !config.llm.anthropic.bedrock.credentials.secretAccessKey ||
+            !config.llm.anthropic.bedrock.credentials.sessionToken))
       ) {
         console.log(
           "No Anthropic API key configured, using URL pattern matching as fallback"
