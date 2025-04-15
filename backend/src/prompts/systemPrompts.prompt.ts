@@ -117,7 +117,8 @@ NEVER send a response with multiple tool uses.
    - Document unexpected states
    - Complete all steps sequentially
    - Never skip confirmation steps
-
+   - Indicate each step status with prefix ✅ or ❌ to show success or failure after completion
+ 
 4. Tool Selection
    - Choose ONE appropriate tool
    - Base choice on current state
@@ -221,7 +222,7 @@ Common Actions (Both Sources):
         - Use with the \`key\` parameter to specify the key (e.g., "Enter", "Backspace", "Tab").
         - Only use on clearly interactive elements.
         - Common uses: form submission, text deletion, navigation.
-    * scroll_down/scroll_up: Scroll the viewport.
+    * scrollDown/scrollUp: Scroll the viewport.
         - Use when elements are partially or fully obscured.
         - Always verify element visibility after scrolling.
         - Aim to fully reveal the target element.
@@ -262,7 +263,7 @@ Important Notes:
 - Puppeteer: Must start with 'launch' if no screenshot exists
 - Docker: Always analyze screenshot first, no 'launch' action needed
 - Strictly use only one action per response and wait for the "Action Result" before proceeding.
-
+- Indicate the status of each test-step with ✅ or ❌ in the beginning to indicate success or failure. (e.g. ✅ Step 1: Click on the button and verify the result)
 `;
 
 const getSystemPrompt = (
@@ -280,7 +281,7 @@ const getSystemPrompt = (
   return `${prompt}\n\n# Environment Context\nSource: ${source}
   ${(imageData?.inference as IClickableElement[]).length > 0 ? `element_list: \n${convertElementsToInput(imageData?.inference as IClickableElement[])}\n\n` : ""}
   ${omniParserResult ? `element_list: \n${addOmniParserResults(omniParserResult)}`: ''}
-   To explore more use scroll_down or scroll_up based on your requirement.`;
+   To explore more use scrollDown or scrollUp based on your requirement.`;
 };
 
 export const SYSTEM_PROMPT = getSystemPrompt;

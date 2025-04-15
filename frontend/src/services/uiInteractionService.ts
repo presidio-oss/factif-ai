@@ -35,15 +35,18 @@ export class UIInteractionService {
   private _waitTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private _loadingDetectionConfig: LoadingDetectionConfig = {
     maxWaitTime: 30000,       // 30 seconds default max wait time
-    pollingInterval: 500,     // Check every 500ms
+    pollingInterval: 250,     // Check every 250ms
     loadingIndicators: [
-      '.loading', 
-      '.spinner', 
+      '.loading',
+      '.spinner',
       'progress',
       '.progress',
       '.loader',
       '[role="progressbar"]',
-      // Add more common loading indicator selectors
+      '.fa-spin',
+      '.spinning',
+      '.rotate'
+      // Common loading indicator selectors
     ]
   };
 
@@ -205,13 +208,13 @@ export class UIInteractionService {
         this.actionPerformedResolve = null;
       }
     });
-    
+
     // Handle input element focus notification
     socket.on("input-focused", (coordinates) => {
       this.consoleService.emitConsoleEvent("info", `Input element focused at (${coordinates.x}, ${coordinates.y})`);
       this.lastClickCoords = coordinates;
     });
-    
+
     // Handle loading state detection
     socket.on("loading-state-update", ({ isLoading, progress }) => {
       if (isLoading) {
@@ -226,7 +229,7 @@ export class UIInteractionService {
         }
       }
     });
-    
+
     // Handle page ready events (DOM content loaded, etc)
     socket.on("page-ready", () => {
       this.consoleService.emitConsoleEvent("info", "Page is fully loaded");
@@ -255,7 +258,7 @@ export class UIInteractionService {
       }
     }
   }
-  
+
   /**
    * Handles browser back navigation without resetting the browser
    * Uses the browser's native history navigation capabilities
@@ -263,7 +266,7 @@ export class UIInteractionService {
    */
   async handleBackNavigation(): Promise<void> {
     const socket = SocketService.getInstance().getSocket();
-    
+
     if (!socket || !this.interactiveModeEnabled) {
       this.consoleService.emitConsoleEvent(
         "error",
@@ -271,14 +274,14 @@ export class UIInteractionService {
       );
       return;
     }
-    
+
     try {
       // Use the existing performAction method with the "back" action
       await this.performAction("back");
       this.consoleService.emitConsoleEvent("info", "Back navigation performed");
     } catch (error) {
       this.consoleService.emitConsoleEvent(
-        "error", 
+        "error",
         `Back navigation failed: ${error instanceof Error ? error.message : "Unknown error"}`
       );
     }
@@ -340,7 +343,7 @@ export class UIInteractionService {
       }
     }
   }
-  
+
   /**
    * Handle mouse hover interactions
    * @param event Mouse event
@@ -367,19 +370,19 @@ export class UIInteractionService {
 
     const scaledX = Math.round(relativeX * scaleX);
     const scaledY = Math.round(relativeY * scaleY);
-    
+
     // Throttle hover events to avoid overwhelming the server
     // Use setTimeout with a small delay to debounce hover events
     if (this._hoverThrottleTimeout) {
       clearTimeout(this._hoverThrottleTimeout);
     }
-    
+
     this._hoverThrottleTimeout = setTimeout(() => {
       this.emitBrowserAction({
         action: "hover",
         params: { x: scaledX, y: scaledY },
       });
-      
+
       this.consoleService.emitConsoleEvent(
         "info",
         `Hover event at scaled coordinates (${scaledX}, ${scaledY})`,
@@ -435,6 +438,11 @@ export class UIInteractionService {
     this.consoleService.emitConsoleEvent("info", `Key pressed: ${event.key}`);
   }
 
+  // Throttle state for scroll events
+  private _scrollThrottleTimeout: ReturnType<typeof setTimeout> | null = null;
+  private _lastScrollTime: number = 0;
+  private _scrollThrottleDelay: number = 300; // ms between scroll actions
+
   handleScrollInteraction(event: WheelEvent) {
     const socket = SocketService.getInstance().getSocket();
     if (
@@ -443,14 +451,33 @@ export class UIInteractionService {
     )
       return;
 
+    // Prevent scroll events from firing too rapidly
+    const now = Date.now();
+    if (now - this._lastScrollTime < this._scrollThrottleDelay) {
+      // Too soon since last scroll - ignore this event
+      return;
+    }
+
+    // Clear any existing timeout
+    if (this._scrollThrottleTimeout) {
+      clearTimeout(this._scrollThrottleTimeout);
+    }
+
     const direction = event.deltaY > 0 ? "down" : "up";
+    const actionType = event.deltaY > 0 ? "scrollDown" : "scrollUp";
 
-    this.emitBrowserAction({
-      action: "scroll",
-      params: { direction },
-    });
+    // Update last scroll time
+    this._lastScrollTime = now;
 
-    this.consoleService.emitConsoleEvent("info", `Scroll ${direction}`);
+    // Use throttle timeout to delay execution slightly and prevent multiple rapid scrolls
+    this._scrollThrottleTimeout = setTimeout(() => {
+      this.emitBrowserAction({
+        action: actionType,
+        params: {},
+      });
+
+      this.consoleService.emitConsoleEvent("info", `Scroll ${direction}`);
+    }, 50); // Small delay to batch rapid scroll events
   }
 
   cleanup() {
@@ -475,12 +502,12 @@ export class UIInteractionService {
     if (socket) {
       // Log the action being sent
       this.consoleService.emitConsoleEvent(
-        "info", 
+        "info",
         `Sending browser action: ${action.action} ${
           action.params.x !== undefined ? `at (${action.params.x}, ${action.params.y})` : ""
         }`
       );
-      
+
       // Send the action to the server
       socket.emit("browser-action", action);
     }
@@ -496,21 +523,21 @@ export class UIInteractionService {
     if (!socket) {
       throw new Error("Cannot wait for loading: Socket not initialized");
     }
-    
+
     const maxWaitTime = timeout || this._loadingDetectionConfig.maxWaitTime;
-    
+
     return new Promise<void>((resolve, reject) => {
       // If not already waiting for loading
       if (!this._isWaitingForLoading) {
         // Check if there are any loading indicators on the page
         this.emitBrowserAction({
           action: "detectLoading",
-          params: { 
-            selectors: this._loadingDetectionConfig.loadingIndicators 
+          params: {
+            selectors: this._loadingDetectionConfig.loadingIndicators
           },
         });
       }
-      
+
       // Setup listener for loading completion
       const loadingCompleteHandler = () => {
         if (this._waitTimeoutId) {
@@ -522,17 +549,17 @@ export class UIInteractionService {
         this._isWaitingForLoading = false;
         resolve();
       };
-      
+
       // Handle loading state updates
       const loadingUpdateHandler = ({ isLoading }: { isLoading: boolean }) => {
         if (!isLoading) {
           loadingCompleteHandler();
         }
       };
-      
+
       socket.on("loading-state-update", loadingUpdateHandler);
       socket.on("page-ready", loadingCompleteHandler);
-      
+
       // Set timeout to prevent waiting indefinitely
       this._waitTimeoutId = setTimeout(() => {
         socket.off("loading-state-update", loadingUpdateHandler);
@@ -564,7 +591,7 @@ export class UIInteractionService {
 
     return new Promise<void>((resolve, reject) => {
       this.actionPerformedResolve = resolve;
-      let timeoutId: number;
+      let timeoutId: ReturnType<typeof setTimeout>;
 
       const clearTimeoutAndResolve = () => {
         clearTimeout(timeoutId);
@@ -597,7 +624,7 @@ export class UIInteractionService {
           this.emitBrowserAction({ action: "back", params: {} });
           this.consoleService.emitConsoleEvent("info", "Back navigation action sent");
           break;
-          
+
         case "wait":
           // Wait for loading to complete or a specific condition
           const waitTimeout = text ? parseInt(text, 10) : undefined;
@@ -657,15 +684,15 @@ export class UIInteractionService {
               "info",
               `Type action: ${text}`,
             );
-            
+
             // After typing, automatically check for loading indicators
             // This helps with form submissions that might happen after typing
             setTimeout(() => {
               this.emitBrowserAction({
                 action: "detectLoading",
-                params: { 
+                params: {
                   selectors: this._loadingDetectionConfig.loadingIndicators,
-                  afterAction: true 
+                  afterAction: true
                 },
               });
             }, 300);
@@ -706,13 +733,12 @@ export class UIInteractionService {
           }
           break;
 
-        case "scroll_down":
-        case "scroll_up":
-          const direction =
-            action.toLowerCase() === "scroll_down" ? "down" : "up";
+        case "scrollDown":
+        case "scrollUp":
+          const direction = action.toLowerCase() === "scrolldown" ? "down" : "up";
           this.emitBrowserAction({
-            action: "scroll",
-            params: { direction },
+            action: action,
+            params: {},
           });
           this.consoleService.emitConsoleEvent("info", `Scroll ${direction}`);
           break;
@@ -722,7 +748,7 @@ export class UIInteractionService {
           this.consoleService.emitConsoleEvent("info", "Browser closed");
           clearTimeoutAndResolve();
           break;
-          
+
         case "submit":
           // Submit form and wait for loading to complete
           this.emitBrowserAction({
@@ -730,14 +756,14 @@ export class UIInteractionService {
             params: coordinate ? { selector: coordinate } : {},
           });
           this.consoleService.emitConsoleEvent("info", "Form submission action sent");
-          
+
           // Automatically check for loading after submission
           setTimeout(() => {
             this.emitBrowserAction({
               action: "detectLoading",
-              params: { 
+              params: {
                 selectors: this._loadingDetectionConfig.loadingIndicators,
-                afterAction: true 
+                afterAction: true
               },
             });
           }, 300);

@@ -13,6 +13,7 @@ interface ConsoleProps {
 
 export const Console = ({ className = "" }: ConsoleProps) => {
   const consoleRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [height, setHeight] = useState(300); // Default height in pixels
@@ -137,8 +138,8 @@ export const Console = ({ className = "" }: ConsoleProps) => {
 
   // Auto-scroll to bottom when new logs are added
   useEffect(() => {
-    if (consoleRef.current) {
-      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   }, [consoleLogs]);
 
@@ -176,7 +177,8 @@ export const Console = ({ className = "" }: ConsoleProps) => {
 
       {/* Console content */}
       <div
-        className="absolute inset-x-0 bottom-0 top-12 px-6 py-3 bg-content1 left-4 right-4 rounded bottom-4
+        ref={scrollContainerRef}
+        className="absolute inset-x-0 top-12 px-6 py-3 bg-content1 left-4 right-4 rounded bottom-4
           overflow-y-auto overflow-x-hidden
           [&::-webkit-scrollbar]:w-2
           [&::-webkit-scrollbar-track]:bg-background
