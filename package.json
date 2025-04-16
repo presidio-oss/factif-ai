@@ -3,7 +3,7 @@
   "version": "1.3.3",
   "description": "",
   "scripts": {
-    "start": "npm run start:backend & npm run start:frontend",
+    "start": "concurrently --prefix none \"npm run start:backend\" \"npm run start:frontend\"",
     "start:frontend": "cd frontend && npm run dev",
     "start:backend": "cd backend && npm run dev",
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
@@ -13,5 +13,8 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
 }
