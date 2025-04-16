@@ -86,9 +86,9 @@ class ActionExecutorService {
           : undefined,
         text: request.text,
         key: request.key,
-        direction: request.action === "scroll_up" 
+        direction: request.action === "scrollUp"
           ? "up" 
-          : request.action === "scroll_down" 
+          : request.action === "scrollDown"
             ? "down" 
             : undefined,
       })) as ActionResponse;

@@ -32,10 +32,21 @@ export const URLMessage = ({
   useEffect(() => {
     if (!hasOpenedUrl.current && !isSuccess) {
       const browserService = UIInteractionService.getInstance();
-      browserService.handleSourceChange("chrome-puppeteer", content);
+      // Check if we're already in an active chat with a browser running
+      // Only change the source if we're not in an active chat or if the browser isn't started
+      if (!isChatStreaming || !browserService.isBrowserStarted()) {
+        console.log("Opening URL in browser:", content);
+        browserService.handleSourceChange("chrome-puppeteer", content);
+      } else {
+        console.log("Browser already running, not reinitializing for URL:", content);
+        // Still mark as opened to prevent repeated attempts
+        setIsLoading(false);
+        setIsSuccess(true);
+        successMessageSent.current = true;
+      }
       hasOpenedUrl.current = true;
     }
-  }, [content, isSuccess]);
+  }, [content, isSuccess, isChatStreaming]);
 
   // Second useEffect to handle socket events
   useEffect(() => {

@@ -95,7 +95,7 @@ Common Actions (Both Sources):
         - Use with the \`key\` parameter to specify the key (e.g., "Enter", "Backspace", "Tab").
         - Only use on clearly interactive elements.
         - Common uses: form submission, text deletion, navigation.
-    * scroll_down/scroll_up: Scroll the viewport.
+    * scrollDown/scrollUp: Scroll the viewport.
         - Use when elements are partially or fully obscured.
         - Always verify element visibility after scrolling.
         - Scroll repeatedly to ensure you've seen ALL elements on the page.
@@ -121,7 +121,7 @@ Important Notes:
 
 Usage:
 <perform_action>
-<action>Action to perform (e.g., launch, doubleClick, click, type, scroll_down, scroll_up, keyPress)</action>
+<action>Action to perform (e.g., launch, doubleClick, click, type, scrollDown, scrollUp, keyPress)</action>
 <url>URL to launch the browser at (optional)</url>
 <coordinate>x,y coordinates (optional)</coordinate>
 <text>Text to type (optional)</text>
@@ -136,7 +136,6 @@ Important Notes:
 - Strictly use only one action per response and wait for the "Action Result" before proceeding.
 - Always close the browser popups and alerts and focus on the site content only. This is important for taking screenshots and exploring the site.
 - NEVER combine perform_action with complete_task - they must be in separate messages (IMPORTANT)
-
 
 Source-Specific Actions:
     Puppeteer Only:
@@ -155,7 +154,7 @@ Source-Specific Actions:
           
 Source-specific information:
   Puppeteer Only:
-    * Viewport size: 1280x720
+    * Viewport size: 1366x768
 
 # AVOIDING REDUNDANT DOCUMENTATION
 - Do NOT re-document a page if no new features or interactions are discovered
@@ -164,7 +163,7 @@ Source-specific information:
   1. You discover previously hidden or overlooked elements
   2. User interactions reveal new functionality 
   3. Content dynamically changes in a significant way
-- If you've thoroughly explored a page and find nothing new, procee
+- If you've thoroughly explored a page and find nothing new, don't waste time re-documenting it
 
 # NAVIGATION VS NON-NAVIGATION ELEMENTS
 Before interacting with elements, classify them as:
@@ -210,6 +209,7 @@ When analyzing screenshots that show Firefox in docker once exploration starts:
 
 # VERY IMPORTANT
 - All the firefox browser buttons like back, forward, refresh, home, etc. are not clickable elements. Do not consider them as clickable elements for exploration.
+- Never included already explored elements in the exploration output. Only include the new elements that you have not explored before. But don't exclude essential elements like login, register, back etc. from the exploration output.
 
 # Output Format
 <explore_output>

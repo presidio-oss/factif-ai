@@ -137,13 +137,9 @@ export class PuppeteerActions {
         }
       }
       
-      // Now wait for page to stabilize, with a short timeout if we detected navigation
-      try {
-        await this.waitTillHTMLStable(page, hasNavigation ? 10000 : 20000);
-      } catch (stabilityError) {
-        console.error("Error waiting for page stability:", stabilityError);
-        // Continue execution even if stability check fails
-      }
+      // Emit action_performed event right after click to improve responsiveness
+      // This gives immediate feedback to the user while page processing continues
+      PuppeteerActions.io?.sockets.emit("action_performed");
       
       // If we clicked on an input field, emit a signal to remember its position
       if (isInput) {
@@ -162,8 +158,14 @@ export class PuppeteerActions {
         console.log(`[FactifAI] Intercepted ${elementInfo.linkTarget} link to: ${elementInfo.linkHref}`);
       }
       
-      // Notify that action was performed
-      PuppeteerActions.io?.sockets.emit("action_performed");
+      // Now wait for page to stabilize, with a short timeout if we detected navigation
+      // This happens after action_performed is emitted, so UI remains responsive
+      try {
+        await this.waitTillHTMLStable(page, hasNavigation ? 6000 : 20000);
+      } catch (stabilityError) {
+        console.error("Error waiting for page stability:", stabilityError);
+        // Continue execution even if stability check fails
+      }
       
       // Get current URL and check if it changed
       const currentUrl = page.url();
@@ -339,13 +341,19 @@ export class PuppeteerActions {
 
   static async scrollUp(page: Page): Promise<ActionResponse> {
     try {
-      await page.mouse.wheel(0, -200);
+      console.log("[FactifAI] Executing scrollUp action");
+      
+      // Use smaller scroll amount for smoother scrolling
+      await page.mouse.wheel(0, -150);
       
       // Notify that action was performed
       PuppeteerActions.io?.sockets.emit("action_performed");
       
-      // Wait briefly for the scroll to take effect
-      await page.waitForTimeout(100);
+      // Wait a bit longer for the scroll to take effect and content to settle
+      await page.waitForTimeout(150);
+      
+      // Add more debugging info
+      console.log("[FactifAI] ScrollUp action completed successfully");
       
       return {
         status: "success",
@@ -362,13 +370,19 @@ export class PuppeteerActions {
 
   static async scrollDown(page: Page): Promise<ActionResponse> {
     try {
-      await page.mouse.wheel(0, 200);
+      console.log("[FactifAI] Executing scrollDown action");
+      
+      // Use smaller scroll amount for smoother scrolling
+      await page.mouse.wheel(0, 150);
       
       // Notify that action was performed
       PuppeteerActions.io?.sockets.emit("action_performed");
       
-      // Wait briefly for the scroll to take effect
-      await page.waitForTimeout(100);
+      // Wait a bit longer for the scroll to take effect and content to settle
+      await page.waitForTimeout(150);
+      
+      // Add more debugging info
+      console.log("[FactifAI] ScrollDown action completed successfully");
       
       return {
         status: "success",
@@ -471,14 +485,14 @@ export class PuppeteerActions {
     }
     
     // Initial delay to ensure the page has stabilized enough for content access
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise((resolve) => setTimeout(resolve, 120));
     
-    const checkDurationMsecs = 1000; // 500
+    const checkDurationMsecs = 300; // 300ms for faster checks
     const maxChecks = timeout / checkDurationMsecs;
     let lastHTMLSize = 0;
     let checkCounts = 1;
     let countStableSizeIterations = 0;
-    const minStableSizeIterations = 3;
+    const minStableSizeIterations = 2;
 
     while (checkCounts++ <= maxChecks) {
       let html = '';

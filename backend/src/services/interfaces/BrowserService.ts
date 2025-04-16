@@ -41,8 +41,8 @@ export interface OmniParserResponse {
 export type ActionType =
   | "click"
   | "type"
-  | "scroll_up"
-  | "scroll_down"
+  | "scrollUp"
+  | "scrollDown"
   | "launch"
   | "back"
   | "keyPress";
