@@ -75,7 +75,8 @@ export const sendChatMessage = async (
 
   let reader: ReadableStreamDefaultReader<Uint8Array>;
   const decoder = new TextDecoder();
-  let connectionTimeout: any = 0;
+  let connectionTimeout: ReturnType<typeof setTimeout> = 0; // Use the correct type
+
 
   try {
     reader = response.body.getReader();
@@ -249,7 +250,8 @@ export const sendExploreChatMessage = async (
 
   let reader: ReadableStreamDefaultReader<Uint8Array>;
   const decoder = new TextDecoder();
-  let connectionTimeout = 0;
+  let connectionTimeout: ReturnType<typeof setTimeout> = 0; //changed from any to ReturnType<typeof setTimeout>
+
 
   try {
     reader = response.body.getReader();
