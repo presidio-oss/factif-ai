@@ -14,9 +14,11 @@ import {
 import {
   IProcessedScreenshot, OmniParserResponse
 } from "../interfaces/BrowserService";
+import { CostTracker } from "../../utils/costCalculator";
 
 export class AnthropicProvider implements LLMProvider {
   private client: Anthropic | AnthropicBedrock;
+
 
   constructor() {
     if (config.llm.anthropic.useBedrock) {
@@ -126,9 +128,23 @@ export class AnthropicProvider implements LLMProvider {
     };
   }
 
-  async processStreamResponse(stream: any, res: Response): Promise<void> {
+  async processStreamResponse(stream: any, res: Response, currentChatId: string): Promise<void> {
+    console.log(stream);
+    let model = '';
     for await (const chunk of stream) {
-      if (chunk.type === "content_block_delta" && chunk.delta?.text) {
+      if (chunk.type === "message_start") {
+        model = chunk.message.model
+      } else if (chunk.type === "message_stop") {
+        const {
+          inputTokenCount,
+          outputTokenCount
+        } = chunk["amazon-bedrock-invocationMetrics"];
+        CostTracker.recordCost(currentChatId, model,
+          {
+            prompt_tokens: inputTokenCount,
+            completion_tokens: outputTokenCount
+          });
+      } else if (chunk.type === "content_block_delta" && chunk.delta?.text) {
         this.sendStreamResponse(res, {
           message: chunk.delta.text,
           timestamp: Date.now()
@@ -138,11 +154,13 @@ export class AnthropicProvider implements LLMProvider {
     this.sendStreamResponse(res, {
       message: "",
       timestamp: Date.now(),
-      isComplete: true
+      isComplete: true,
+      totalCost: CostTracker.getTotalCostForTestcase(currentChatId),
     });
   }
 
   async streamResponse(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -157,6 +175,7 @@ export class AnthropicProvider implements LLMProvider {
     let isRetrySuccessful = false;
     for (let _ of retryArray) {
       isRetrySuccessful = await this.processStream(
+        currentChatId,
         res,
         message,
         history,
@@ -181,6 +200,7 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async processStream(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -209,7 +229,7 @@ export class AnthropicProvider implements LLMProvider {
       logMessageRequest(messageRequest);
 
       const stream = await this.client.messages.create(messageRequest);
-      await this.processStreamResponse(stream, res);
+      await this.processStreamResponse(stream, res, currentChatId);
       return true;
     } catch (error) {
       console.error("Error in AnthropicProvider:", error);

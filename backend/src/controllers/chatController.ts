@@ -56,6 +56,7 @@ export class ChatController {
           folderPath
         ),
         ChatService.processMessage(
+          currentChatId,
           res,
           message,
           history,

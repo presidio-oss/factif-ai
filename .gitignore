@@ -46,3 +46,4 @@ backend/output
 # Tools
 .hai/
 /backend/storage/history
+/backend/costs/llm-costs.json

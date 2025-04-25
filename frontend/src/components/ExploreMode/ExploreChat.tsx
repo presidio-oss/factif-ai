@@ -20,8 +20,15 @@ import { emergencyStorageCleanup } from "@/utils/storageCleanup";
 
 export const ExploreChat = () => {
   const navigate = useNavigate();
-  const { currentChatId, setCurrentChatId, isChatStreaming, type, setHasActiveAction } =
-    useAppContext();
+  const {
+    currentChatId,
+    setCurrentChatId,
+    isChatStreaming,
+    type,
+    setHasActiveAction,
+    setCost,
+    cost,
+  } = useAppContext();
   const { showRecentChats, setShowRecentChats } = useExploreModeContext();
   const { messages, sendMessage, clearChat, messagesEndRef, stopStreaming } =
     useExploreChat();
@@ -38,16 +45,20 @@ export const ExploreChat = () => {
         try {
           setHasActiveAction(true);
           await ModeService.resetContext("explore");
+          setCost(0);
           console.log("Context reset on ExploreChat component mount");
           initialLoadRef.current = false;
         } catch (error) {
-          console.error("Failed to reset explore context on component mount:", error);
+          console.error(
+            "Failed to reset explore context on component mount:",
+            error,
+          );
         } finally {
           setHasActiveAction(false);
         }
       }
     };
-    
+
     initializeExploreChat();
   }, [setHasActiveAction]);
 
@@ -90,6 +101,7 @@ export const ExploreChat = () => {
 
   const handleClearChat = () => {
     clearChat();
+    setCost(0);
     setCurrentChatId(`#${Date.now()}`);
   };
 
@@ -278,7 +290,16 @@ export const ExploreChat = () => {
           </div>
         </div>
       </div>
-      <div className="border-t border-content3 px-6">
+      {cost > 0 && (
+        <div
+          className={
+            "flex items-center justify-start text-orange-500 text-left px-4 py-1 border-t-1 border-content3 bg-[#242121]"
+          }
+        >
+          Cost: ${cost.toFixed(4)}
+        </div>
+      )}
+      <div className="border-t border-content3 px-4">
         <ChatInput
           onSendMessage={handleSendMessage}
           isStreaming={isChatStreaming}
@@ -300,7 +321,6 @@ export const ExploreModeSuggestions: Suggestion[] = [
     type: "explore",
     title: "Explore Ecommerce Site",
     description: "Explore all the features and links on saucedemo.com",
-    prompt:
-      "Launch https://www.saucedemo.com",
+    prompt: "Launch https://www.saucedemo.com",
   },
 ];

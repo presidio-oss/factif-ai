@@ -10,7 +10,14 @@ import ModeService from "../../services/modeService";
 
 export const Chat = () => {
   const navigate = useNavigate();
-  const { currentChatId, setCurrentChatId, isChatStreaming, setHasActiveAction } = useAppContext();
+  const {
+    currentChatId,
+    setCurrentChatId,
+    isChatStreaming,
+    setHasActiveAction,
+    setCost,
+    cost,
+  } = useAppContext();
   const { messages, sendMessage, clearChat, messagesEndRef, stopStreaming } =
     useChat();
   const initialLoadRef = useRef(true);
@@ -22,6 +29,7 @@ export const Chat = () => {
         try {
           setHasActiveAction(true);
           await ModeService.resetContext("regression");
+          setCost(0);
           console.log("Context reset on Chat component mount");
           initialLoadRef.current = false;
         } catch (error) {
@@ -31,7 +39,7 @@ export const Chat = () => {
         }
       }
     };
-    
+
     initializeChat();
   }, [setHasActiveAction]);
 
@@ -133,7 +141,16 @@ export const Chat = () => {
           </div>
         </div>
       </div>
-      <div className="border-t border-content3 px-6">
+      {cost > 0 && (
+        <div
+          className={
+            "flex items-center justify-start text-orange-500 text-left px-4 py-1 border-t-1 border-content3 bg-[#242121]"
+          }
+        >
+          Cost: ${cost.toFixed(4)}
+        </div>
+      )}
+      <div className="border-t border-content3 px-4">
         <ChatInput
           onSendMessage={handleSendMessage}
           isStreaming={isChatStreaming}

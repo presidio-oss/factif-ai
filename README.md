@@ -20,7 +20,7 @@
 </div>
 <br>
 
-# 🚀 Factifai
+# 🚀 Factifai (FAK-tih-fye)
 
 **Factifai** revolutionizes test automation by directly controlling your computer through AI. Using built-in vision capabilities of Claude, OpenAI, and Gemini along with computer use, it can navigate any application naturally - clicking, typing, and verifying results just like a human would.
 

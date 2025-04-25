@@ -24,6 +24,8 @@ interface AppContextType {
   mode: string;
   type: string;
   switchMode: (newMode: "explore" | "regression") => Promise<void>;
+  cost: number;
+  setCost: React.Dispatch<React.SetStateAction<number>>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -50,6 +52,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(true);
   const [mode, setMode] = useState<string>("explore");
   const [type, setType] = useState<string>("action");
+  const [cost, setCost] = useState<number>(0);
 
   // Initialize with proper backend mode
   useEffect(() => {
@@ -111,6 +114,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     type,
     setType,
     switchMode,
+    setCost,
+    cost
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -13,6 +13,7 @@ import { StreamingSource } from "../../types/stream.types";
 import { LLMProvider } from "./LLMProvider";
 import { IProcessedScreenshot, OmniParserResponse } from "../interfaces/BrowserService";
 import { addElementsList } from "../../utils/common.util";
+import { CostTracker } from "../../utils/costCalculator";
 
 export class GeminiProvider implements LLMProvider {
   private client: GoogleGenerativeAI;
@@ -98,6 +99,7 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async streamResponse(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -112,6 +114,7 @@ export class GeminiProvider implements LLMProvider {
     let isRetrySuccessful = false;
     for (let _ of retryArray) {
       isRetrySuccessful = await this.processStream(
+        currentChatId,
         res,
         message,
         history,
@@ -133,6 +136,7 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async processStream(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -154,8 +158,8 @@ export class GeminiProvider implements LLMProvider {
             ? [
               {
                 inlineData: {
-                  mimeType: "image/jpeg",
-                  data: Buffer.from(imageData.image, "base64").toString(
+                  mimeType: "image/png",
+                  data: Buffer.from(imageData.originalImage, "base64").toString(
                     "base64"
                   )
                 }
@@ -172,7 +176,17 @@ export class GeminiProvider implements LLMProvider {
           { text: message }
         ]);
 
-        const response = result.response;
+        console.log("gemini result: ", result);
+        const response: any = result.response;
+        const {
+          promptTokenCount,
+          candidatesTokenCount
+        } = response.usageMetadata;
+        CostTracker.recordCost(currentChatId, response.modelVersion,
+          {
+            prompt_tokens: promptTokenCount,
+            completion_tokens: candidatesTokenCount
+          });
         this.sendStreamResponse(res, {
           message: response.text(),
           timestamp: Date.now()

@@ -8,20 +8,21 @@ import { StreamingSource } from "../../types/stream.types";
 import { LLMProvider } from "./LLMProvider";
 import {
   exploreModePrompt,
-  getPerformActionPrompt,
+  getPerformActionPrompt
 } from "../../prompts/explore-mode.prompt";
 import { appDocumentationGeneratorPrompt } from "../../prompts/app-doc-generator.prompt";
 import {
-  saveFileAndScreenshot,
+  saveFileAndScreenshot
 } from "../../utils/conversion-util";
 import {
   getCurrentUrlBasedOnSource,
   logMessageRequest,
-  extractAndStoreUrlFromResponse,
+  extractAndStoreUrlFromResponse
 } from "../../utils/common.util";
 import { getLatestScreenshot } from "../../utils/screenshotUtils";
 import { IProcessedScreenshot, OmniParserResponse } from "../interfaces/BrowserService";
 import { PuppeteerService } from "../implementations/puppeteer/PuppeteerService";
+import { CostTracker } from "../../utils/costCalculator";
 
 // Interface for page metadata
 interface PageMetadata {
@@ -57,7 +58,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       });
     } else {
       this.client = new Anthropic({
-        apiKey: config.llm.anthropic.apiKey,
+        apiKey: config.llm.anthropic.apiKey
       });
     }
   }
@@ -94,7 +95,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
           ? this.getLastUserMessage(history)
           : "",
         currentPageUrl
-      ),
+      )
     ];
 
     if (type === ExploreActionTypes.ACTION) {
@@ -102,7 +103,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       history.forEach((msg) => {
         formattedMessages.push({
           role: msg.isUser ? "user" : ("assistant" as const),
-          content: msg.text,
+          content: msg.text
         });
       });
     }
@@ -121,15 +122,15 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
               data: imageData.originalImage.replace(
                 /^data:image\/png;base64,/,
                 ""
-              ),
-            },
-          },
-        ],
+              )
+            }
+          }
+        ]
       });
     } else {
       formattedMessages.push({
         role: "user",
-        content: currentMessage,
+        content: currentMessage
       });
     }
 
@@ -153,42 +154,56 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       model: modelId,
       max_tokens: maxTokens,
       messages,
-      stream,
+      stream
     };
   }
 
   async processStreamResponse(
     stream: any,
     res: Response,
+    currentChatId: string,
     imageData?: IProcessedScreenshot,
     source?: StreamingSource
   ): Promise<void> {
-    let completeResponse = '';
-    
+    let completeResponse = "";
+    let model = "";
     // Collect the complete response while streaming chunks
     for await (const chunk of stream) {
-      if (chunk.type === "content_block_delta" && chunk.delta?.text) {
+      if (chunk.type === "message_start") {
+        model = chunk.message.model;
+      } else if (chunk.type === "message_stop") {
+        const {
+          inputTokenCount,
+          outputTokenCount
+        } = chunk["amazon-bedrock-invocationMetrics"];
+        CostTracker.recordCost(currentChatId, model,
+          {
+            prompt_tokens: inputTokenCount,
+            completion_tokens: outputTokenCount
+          });
+      } else if (chunk.type === "content_block_delta" && chunk.delta?.text) {
         // Accumulate the complete response
         completeResponse += chunk.delta.text;
-        
+
         this.sendStreamResponse(res, {
           message: chunk.delta.text,
-          timestamp: Date.now(),
+          timestamp: Date.now()
         });
       }
     }
-    
+
     // Once streaming is done, extract URL from the complete response if source is docker
-    if (source === 'ubuntu-docker-vnc' && completeResponse) {
+    if (source === "ubuntu-docker-vnc" && completeResponse) {
       // Use the utility function to extract and store URL
       extractAndStoreUrlFromResponse(source, completeResponse);
     }
-    
+
     this.sendStreamResponse(res, {
       message: "",
       timestamp: Date.now(),
       isComplete: true,
-      imageData: imageData?.originalImage.startsWith('data:image')? imageData?.originalImage : `data:image/png;base64,${imageData?.originalImage}`,
+      totalCost: CostTracker.getTotalCostForTestcase(currentChatId),
+      imageData: imageData?.originalImage.startsWith("data:image") ? imageData?.originalImage : `data:image/png;base64,${imageData?.originalImage}`
     });
   }
 
@@ -207,6 +222,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
    * @return {Promise<void>} Resolves when the streaming process is complete or fails after exhausting retry attempts.
    */
   async streamResponse(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -219,12 +235,13 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
   ): Promise<void> {
     console.log("is image available", !!imageData);
     type === ExploreActionTypes.EXPLORE &&
-      (await this.generateComponentDescription(source as StreamingSource));
+    (await this.generateComponentDescription(source as StreamingSource, currentChatId));
 
     const retryArray = new Array(retryCount).fill(0);
     let isRetrySuccessful = false;
     for (let _ of retryArray) {
       isRetrySuccessful = await this.processStream(
+        currentChatId,
         res,
         message,
         history,
@@ -243,7 +260,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       this.sendStreamResponse(res, {
         message: "Error processing message. Please try again later.",
         timestamp: Date.now(),
-        isError: true,
+        isError: true
       });
     }
   }
@@ -262,6 +279,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
    * @return {Promise<boolean>} A promise that resolves to true if the stream is processed successfully; otherwise, false.
    */
   async processStream(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -269,12 +287,12 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     type: ExploreActionTypes = ExploreActionTypes.EXPLORE,
     source?: StreamingSource,
     imageData?: IProcessedScreenshot,
-    omniParserResult?: OmniParserResponse,
+    omniParserResult?: OmniParserResponse
   ): Promise<boolean> {
     try {
       console.log(omniParserResult);
       const modelId = this.getModelId();
-      
+
       // Get currentPageUrl safely with fallback - critical change to prevent errors
       let currentPageUrl = "";
       try {
@@ -282,7 +300,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
         if (source === "chrome-puppeteer") {
           const puppeteerService = new PuppeteerService({ io: null as any });
           const browserReady = await puppeteerService.hasBrowserInstance();
-          
+
           if (browserReady) {
             currentPageUrl = await getCurrentUrlBasedOnSource(source);
           } else {
@@ -315,14 +333,14 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       logMessageRequest(messageRequest);
 
       const stream = await this.client.messages.create(messageRequest);
-      await this.processStreamResponse(stream, res, imageData, source);
+      await this.processStreamResponse(stream, res, currentChatId, imageData, source);
       return true;
     } catch (error) {
       console.log(error);
       this.sendStreamResponse(res, {
         message: "Error processing message re-trying",
         timestamp: Date.now(),
-        isError: false,
+        isError: false
       });
 
       return false;
@@ -356,14 +374,14 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
         content:
           action === ExploreActionTypes.EXPLORE
             ? exploreModePrompt
-            : getPerformActionPrompt(source, task, currentPageUrl),
-      },
+            : getPerformActionPrompt(source, task, currentPageUrl)
+      }
     ];
     if (action === ExploreActionTypes.ACTION) {
       message.push({
         role: "assistant",
         content:
-          "I understand. Before each response, I will:\n\n1. Verify only ONE tool use exists\n2. Check no tool XML in markdown\n3. Validate all parameters\n4. Never combine multiple actions\n\nWhat would you like me to do?",
+          "I understand. Before each response, I will:\n\n1. Verify only ONE tool use exists\n2. Check no tool XML in markdown\n3. Validate all parameters\n4. Never combine multiple actions\n\nWhat would you like me to do?"
       });
     }
 
@@ -381,14 +399,15 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
    * already been processed.
    */
   async generateComponentDescription(
-    source: StreamingSource
+    source: StreamingSource,
+    currentChatId: string
   ): Promise<boolean> {
     // Check if browser is ready when using Puppeteer to prevent premature operations
     let browserReady = true;
     if (source === "chrome-puppeteer") {
       const puppeteerService = new PuppeteerService({ io: null as any });
       browserReady = await puppeteerService.hasBrowserInstance();
-      
+
       if (!browserReady) {
         console.log("Browser not ready yet for documentation generation, skipping");
         return false;
@@ -398,11 +417,11 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     // Get page URL and screenshot with proper error handling
     let pageUrl = "";
     let screenshot;
-    
+
     try {
       pageUrl = await getCurrentUrlBasedOnSource(source);
       screenshot = await getLatestScreenshot(source);
-      
+
       // Verify we have the necessary data
       if (!pageUrl || !screenshot || !screenshot.originalImage) {
         console.log("Missing required data for documentation generation, skipping");
@@ -415,11 +434,11 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
 
     // Check if this URL is already visited
     if (ExploreModeAnthropicProvider.pageRouter.has(pageUrl)) return false;
-    
+
     // Add URL to visited pages and increment counter
     ExploreModeAnthropicProvider.pageRouter.add(pageUrl);
     ExploreModeAnthropicProvider.visitedPagesCount++;
-    
+
     console.log(`[Explore Mode] Visited page count: ${ExploreModeAnthropicProvider.visitedPagesCount}`);
 
     // Extract page metadata if using Puppeteer
@@ -433,10 +452,10 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
           language: document.documentElement.lang || "en",
           description:
             document
-              .querySelector('meta[name="description"]')
+              .querySelector("meta[name=\"description\"]")
               ?.getAttribute("content") || "",
           totalScrollHeight: document.documentElement.scrollHeight,
-          currentScrollPosition: window.scrollY,
+          currentScrollPosition: window.scrollY
         };
       });
     }
@@ -446,7 +465,7 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       [],
       false
     );
-    
+
     // Generate exploration progress message based on pages visited
     const explorationProgress = ExploreModeAnthropicProvider.visitedPagesCount < 10 ?
       `\n\n⚠️ EXPLORATION PROGRESS: You've only visited ${ExploreModeAnthropicProvider.visitedPagesCount} unique pages so far. For comprehensive documentation, you should explore AT LEAST 10-15 more pages/sections before considering your exploration complete.\n\nDO NOT USE complete_task UNTIL YOU'VE EXPLORED MORE PAGES!` :
@@ -459,12 +478,12 @@ ${appDocumentationGeneratorPrompt}
 
 PAGE METADATA:
 Current URL: ${pageUrl}
-Page Title: ${pageMetadata.title || 'Unknown'}
-Viewport Size: ${pageMetadata.viewportWidth || 'Unknown'} x ${pageMetadata.viewportHeight || 'Unknown'} pixels
-Page Language: ${pageMetadata.language || 'Unknown'}
-${pageMetadata.description ? `Meta Description: ${pageMetadata.description}` : ''}
-${screenshot.totalScroll ? `Total Page Height: ${screenshot.totalScroll}px` : ''}
-${screenshot.scrollPosition !== undefined ? `Current Scroll Position: ${screenshot.scrollPosition}px` : ''}${explorationProgress}
+Page Title: ${pageMetadata.title || "Unknown"}
+Viewport Size: ${pageMetadata.viewportWidth || "Unknown"} x ${pageMetadata.viewportHeight || "Unknown"} pixels
+Page Language: ${pageMetadata.language || "Unknown"}
+${pageMetadata.description ? `Meta Description: ${pageMetadata.description}` : ""}
+${screenshot.totalScroll ? `Total Page Height: ${screenshot.totalScroll}px` : ""}
+${screenshot.scrollPosition !== undefined ? `Current Scroll Position: ${screenshot.scrollPosition}px` : ""}${explorationProgress}
 
 IMPORTANT: 
 1. Use the exact URL provided above as the "URL/Location" for the current page/screen in your documentation.
@@ -482,12 +501,19 @@ IMPORTANT:
           source: {
             type: "base64",
             media_type: "image/png",
-            data: screenshot.originalImage.replace(/^data:image\/png;base64,/, ""),
-          },
-        },
-      ],
+            data: screenshot.originalImage.replace(/^data:image\/png;base64,/, "")
+          }
+        }
+      ]
     });
     const stream = await this.client.messages.create(messageRequest);
+    // Collect the complete response while streaming chunks
+    CostTracker.recordCost(currentChatId, stream.model,
+      {
+        prompt_tokens: stream.usage.input_tokens,
+        completion_tokens: stream.usage.output_tokens
+      });
+
     await saveFileAndScreenshot(
       `${new Date().getTime().toString()}`,
       screenshot,

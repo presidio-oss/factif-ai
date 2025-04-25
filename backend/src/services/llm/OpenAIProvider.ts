@@ -11,6 +11,7 @@ import { IProcessedScreenshot, OmniParserResponse } from "../interfaces/BrowserS
 import fs from "fs";
 import path from "path";
 import { addElementsList } from "../../utils/common.util";
+import { CostTracker } from "../../utils/costCalculator";
 
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI | AzureOpenAI;
@@ -134,6 +135,7 @@ export class OpenAIProvider implements LLMProvider {
 
 
   async streamResponse(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -148,6 +150,7 @@ export class OpenAIProvider implements LLMProvider {
     let isRetrySuccessful = false;
     for (let _ of retryArray) {
       isRetrySuccessful = await this.processStream(
+        currentChatId,
         res,
         message,
         history,
@@ -169,6 +172,7 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async processStream(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -177,7 +181,7 @@ export class OpenAIProvider implements LLMProvider {
     omniParserResult?: OmniParserResponse,
   ) {
     try {
-      console.log("Processing message with history length:", history.length);
+      console.log("Open AI Processing message with history length:", history.length);
       const messages = this.formatMessagesWithHistory(
         message,
         history,
@@ -197,12 +201,21 @@ export class OpenAIProvider implements LLMProvider {
         model: this.model,
         messages,
         stream: true,
+        stream_options: {
+          "include_usage": true
+        }
       });
 
       let accumulatedResponse = "";
 
       for await (const chunk of stream) {
         const content = chunk.choices[0]?.delta?.content || "";
+        if (chunk.usage) {
+          CostTracker.recordCost(currentChatId, chunk.model, {
+            prompt_tokens: chunk.usage?.prompt_tokens as number,
+            completion_tokens: chunk.usage?.completion_tokens as number,
+          })
+        }
         if (content) {
           accumulatedResponse += content;
           this.sendStreamResponse(res, {
@@ -215,6 +228,7 @@ export class OpenAIProvider implements LLMProvider {
       this.sendStreamResponse(res, {
         message: "",
         isComplete: true,
+        totalCost: CostTracker.getTotalCostForTestcase(currentChatId),
         timestamp: Date.now(),
       });
       return true;

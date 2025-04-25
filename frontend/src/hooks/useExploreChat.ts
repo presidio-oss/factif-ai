@@ -40,6 +40,7 @@ export const useExploreChat = () => {
     streamingSource,
     saveScreenshots,
     setType,
+    setCost
   } = useAppContext();
 
   const {
@@ -156,7 +157,7 @@ export const useExploreChat = () => {
       hasPartialMessage.current = false;
       activeMessageId.current = null;
       setIsChatStreaming(false);
-
+      setCost(0)
       // Then ensure browser is closed on component unmount
       try {
         // We need to use an immediately invoked async function since useEffect cleanup can't be async
@@ -846,6 +847,7 @@ export const useExploreChat = () => {
     messageId: string,
     fullResponse: string,
     imageData: string,
+    cost: number = 0,
     _omniParserResult?: OmniParserResult,
   ) => {
     if (activeMessageId.current !== messageId) return;
@@ -864,7 +866,7 @@ export const useExploreChat = () => {
       streamingSource,
       imageData,
     );
-
+    cost > -1 && setCost((prev: number)=> prev + cost);
     if (
       processedResponse.actionResult ||
       fullResponse.includes("<complete_task>")
@@ -1021,11 +1023,12 @@ export const useExploreChat = () => {
           fullResponse += chunk;
           handleMessageChunk(messageId, chunk, fullResponse);
         },
-        (image?: string) =>
+        (image?: string, cost?: number) =>
           handleMessageCompletion(
             messageId,
             fullResponse,
             image || "",
+            cost,
             omniParserResult,
           ),
         (error: Error) => handleError(messageId, error),

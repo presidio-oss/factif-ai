@@ -6,15 +6,74 @@ import path from "path";
 import os from "os";
 
 export class DockerCommands {
+  // Track if we've already shown error messages to prevent duplicates
+  private static hasShownDockerInstalledMessage: boolean = false;
+  private static hasShownDockerRunningMessage: boolean = false;
+
+  // Helper method to display a clear message when Docker is not installed
+  private static displayDockerNotInstalledMessage(): void {
+    if (this.hasShownDockerInstalledMessage) return;
+    
+    console.log(
+      "\n============================================================================="
+    );
+    console.log(
+      "DOCKER NOT INSTALLED - Ubuntu VNC feature requires Docker to be installed"
+    );
+    console.log(
+      "Please install Docker from https://docs.docker.com/get-docker/"
+    );
+    console.log(
+      "=============================================================================\n"
+    );
+    
+    this.hasShownDockerInstalledMessage = true;
+  }
+
+  // Helper method to display a clear message when Docker is not running
+  private static displayDockerNotRunningMessage(): void {
+    if (this.hasShownDockerRunningMessage) return;
+    
+    console.log(
+      "\n============================================================================="
+    );
+    console.log(
+      "DOCKER NOT RUNNING - Ubuntu VNC feature requires Docker to be running locally"
+    );
+    console.log(
+      "=============================================================================\n"
+    );
+    
+    this.hasShownDockerRunningMessage = true;
+  }
   static async executeCommand({
     command,
     successMessage,
     errorMessage,
   }: DockerCommandOptions): Promise<string> {
     return new Promise((resolve, reject) => {
-      const docker = spawn("docker", command);
+      let docker;
+      
+      try {
+        docker = spawn("docker", command);
+      } catch (err) {
+        this.displayDockerNotInstalledMessage();
+        return resolve(""); // Resolve with empty string instead of rejecting
+      }
+      
       let output = "";
       let errorOutput = "";
+
+      docker.on('error', (err: NodeJS.ErrnoException) => {
+        // Check if the error is due to Docker not being installed
+        if (err.code === 'ENOENT') {
+          // Don't log the full error stack trace, just show our friendly message
+          this.displayDockerNotInstalledMessage();
+          resolve(""); // Resolve with empty string instead of rejecting
+        } else {
+          reject(err);
+        }
+      });
 
       docker.stdout.on("data", (data) => {
         output += data.toString();
@@ -47,15 +106,7 @@ export class DockerCommands {
             errorOutput.includes("connection refused");
 
           if (isDockerNotRunning) {
-            console.log(
-              "\n============================================================================="
-            );
-            console.log(
-              "DOCKER NOT RUNNING - Ubuntu VNC feature requires Docker to be running locally"
-            );
-            console.log(
-              "=============================================================================\n"
-            );
+            this.displayDockerNotRunningMessage();
           } else {
             reject(new Error(`Command failed with code ${code}`));
           }
@@ -78,6 +129,12 @@ export class DockerCommands {
 
     try {
       const output = await this.executeCommand({ command });
+
+      // When Docker is not installed or not running, executeCommand will return an empty string
+      if (output === "") {
+        // Docker is not available - already logged by executeCommand method
+        return { exists: false, running: false, id: null };
+      }
 
       if (!output.trim()) {
         return { exists: false, running: false, id: null };

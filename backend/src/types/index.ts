@@ -22,6 +22,7 @@ export interface StreamResponse {
   isComplete?: boolean;
   isError?: boolean;
   imageData?: string;
+  totalCost?: number;
 }
 
 export enum Modes {

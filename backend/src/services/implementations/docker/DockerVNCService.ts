@@ -80,6 +80,12 @@ export class DockerVNCService extends BaseStreamingService {
       await this.ensureImageExists();
 
       const containerId = await DockerCommands.createContainer(this.config);
+      
+      // Check if container creation succeeded
+      if (!containerId || containerId.trim() === "") {
+        throw new Error("Failed to create Docker container. Docker might not be installed or running.");
+      }
+      
       this.containerId = containerId;
 
       await this.waitForServices();
@@ -104,12 +110,30 @@ export class DockerVNCService extends BaseStreamingService {
           : "Ubuntu Docker VNC initialization complete",
       };
     } catch (error: any) {
-      this.emitConsoleLog(
-        "error",
-        `VNC initialization error: ${error.message || "Unknown error"}`
-      );
-      await this.cleanup();
-      throw error;
+      const errorMessage = error.message || "Unknown error";
+      if (errorMessage.includes("Docker is not available") || 
+          errorMessage.includes("Docker container unavailable")) {
+        // For Docker installation errors, don't show the stack trace
+        this.emitConsoleLog(
+          "error",
+          "Docker is not available for VNC features. Please install Docker or ensure it's running."
+        );
+        await this.cleanup();
+        
+        // Return a special response instead of throwing an error
+        return {
+          status: "error",
+          message: "Docker is not installed. Please install Docker from https://docs.docker.com/get-docker/"
+        };
+      } else {
+        // For other errors, show more details
+        this.emitConsoleLog(
+          "error",
+          `VNC initialization error: ${errorMessage}`
+        );
+        await this.cleanup();
+        throw error;
+      }
     }
   }
 
@@ -196,17 +220,32 @@ export class DockerVNCService extends BaseStreamingService {
 
   private async ensureImageExists(): Promise<void> {
     try {
-      await DockerCommands.executeCommand({
+      const result = await DockerCommands.executeCommand({
         command: ["images", "-q", this.config.imageName],
       });
+      
+      // Check if the command returned empty result, which could indicate Docker not installed
+      if (result === "") {
+        this.emitConsoleLog("error", "Docker may not be installed or is not running.");
+        throw new Error("Docker is not available. Please install Docker or ensure it's running.");
+      }
+      
+      // Check if the image exists
+      if (!result.trim()) {
+        this.emitConsoleLog("error", "Docker image not available.");
+        throw new Error(`Docker image '${this.config.imageName}' not found.`);
+      }
     } catch (error: any) {
-      this.emitConsoleLog("error", "Docker image not available.");
+      this.emitConsoleLog("error", "Docker image check failed.");
       throw error;
     }
   }
 
   private async waitForServices(): Promise<void> {
-    if (!this.containerId) throw new Error("No container ID available");
+    if (!this.containerId) {
+      this.emitConsoleLog("error", "Docker container unavailable. Docker might not be installed or running.");
+      throw new Error("Docker container unavailable. Please install Docker or ensure it's running.");
+    }
 
     let attempts = 0;
     const maxAttempts = 60; // Increased timeout from 30 to 60 seconds
@@ -214,21 +253,30 @@ export class DockerVNCService extends BaseStreamingService {
     this.emitConsoleLog("info", "Waiting for VNC services to start...");
 
     while (attempts < maxAttempts) {
-      const serviceStatus = await DockerCommands.checkServiceDetailed(this.containerId);
-      
-      if (serviceStatus.vncReady && serviceStatus.noVncReady) {
-        this.emitConsoleLog("info", "All VNC services started successfully");
-        return;
-      }
-      
-      // Log which specific service we're waiting for
-      if (attempts % 5 === 0) {
-        if (!serviceStatus.vncReady && !serviceStatus.noVncReady) {
-          this.emitConsoleLog("info", `Waiting for VNC and noVNC services... [${attempts+1}/${maxAttempts}]`);
-        } else if (!serviceStatus.vncReady) {
-          this.emitConsoleLog("info", `Waiting for VNC service (port 5900)... [${attempts+1}/${maxAttempts}]`);
-        } else if (!serviceStatus.noVncReady) {
-          this.emitConsoleLog("info", `Waiting for noVNC service (port 6080)... [${attempts+1}/${maxAttempts}]`);
+      try {
+        const serviceStatus = await DockerCommands.checkServiceDetailed(this.containerId);
+        
+        if (serviceStatus.vncReady && serviceStatus.noVncReady) {
+          this.emitConsoleLog("info", "All VNC services started successfully");
+          return;
+        }
+        
+        // Log which specific service we're waiting for
+        if (attempts % 5 === 0) {
+          if (!serviceStatus.vncReady && !serviceStatus.noVncReady) {
+            this.emitConsoleLog("info", `Waiting for VNC and noVNC services... [${attempts+1}/${maxAttempts}]`);
+          } else if (!serviceStatus.vncReady) {
+            this.emitConsoleLog("info", `Waiting for VNC service (port 5900)... [${attempts+1}/${maxAttempts}]`);
+          } else if (!serviceStatus.noVncReady) {
+            this.emitConsoleLog("info", `Waiting for noVNC service (port 6080)... [${attempts+1}/${maxAttempts}]`);
+          }
+        }
+      } catch (error: any) {
+        // If Docker is not available, we might get errors here
+        this.emitConsoleLog("warn", `Error checking service status: ${error.message || "Unknown error"}`);
+        
+        if (attempts % 5 === 0) {
+          this.emitConsoleLog("info", `Still waiting for Docker services... [${attempts+1}/${maxAttempts}]`);
         }
       }
       

@@ -15,6 +15,7 @@ export const useChat = () => {
     currentChatId,
     streamingSource,
     saveScreenshots,
+    setCost
   } = useAppContext();
 
   // Initialize MessageProcessor with setHasActiveAction
@@ -167,7 +168,8 @@ export const useChat = () => {
           }
         },
         // onComplete
-        async () => {
+        async (cost: number) => {
+          console.log('cost ==>', cost);
           // Only process completion if this is still the active message
           if (activeMessageId.current === messageId) {
             hasPartialMessage.current = false;
@@ -240,6 +242,7 @@ export const useChat = () => {
               isProcessing.current = false;
             }
           }
+          cost > -1 && setCost((prev: number)=> prev + cost);
         },
         // onError
         (error: Error) => {
@@ -341,6 +344,7 @@ export const useChat = () => {
     if (!isChatStreaming) {
       try {
         setHasActiveAction(true);
+        setCost(0)
         // Reset LLM context in the backend to ensure a fresh start
         await ModeService.resetContext("regression");
         console.log("Context reset for new chat");

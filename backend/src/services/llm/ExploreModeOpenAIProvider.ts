@@ -23,6 +23,7 @@ import {
 import { appDocumentationGeneratorPrompt } from "../../prompts/app-doc-generator.prompt";
 import fs from "fs";
 import path from "path";
+import { CostTracker } from "../../utils/costCalculator";
 
 // Interface for page metadata (matching the Anthropic implementation)
 interface PageMetadata {
@@ -159,6 +160,7 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
   }
 
   async streamResponse(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -171,12 +173,13 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
   ): Promise<void> {
     console.log("is image available", !!imageData);
     type === ExploreActionTypes.EXPLORE &&
-      (await this.generateComponentDescription(source as StreamingSource));
+      (await this.generateComponentDescription(source as StreamingSource, currentChatId));
 
     const retryArray = new Array(retryCount).fill(0);
     let isRetrySuccessful = false;
     for (let _ of retryArray) {
       isRetrySuccessful = await this.processStream(
+        currentChatId,
         res,
         message,
         history,
@@ -201,6 +204,7 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
   }
 
   async processStream(
+    currentChatId: string,
     res: Response,
     message: string,
     history: ChatMessage[] = [],
@@ -257,12 +261,21 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
         model: this.model,
         messages,
         stream: true,
+        stream_options: {
+          "include_usage": true
+        }
       });
 
       let accumulatedResponse = "";
 
       for await (const chunk of stream) {
         const content = chunk.choices[0]?.delta?.content || "";
+        if (chunk.usage) {
+          CostTracker.recordCost(currentChatId, chunk.model, {
+            prompt_tokens: chunk.usage?.prompt_tokens as number,
+            completion_tokens: chunk.usage?.completion_tokens as number,
+          })
+        }
         if (content) {
           accumulatedResponse += content;
           this.sendStreamResponse(res, {
@@ -282,6 +295,7 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
         message: "",
         isComplete: true,
         timestamp: Date.now(),
+        totalCost: CostTracker.getTotalCostForTestcase(currentChatId),
         imageData: imageData?.originalImage,
       });
       return true;
@@ -326,7 +340,8 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
   }
 
   async generateComponentDescription(
-    source: StreamingSource
+    source: StreamingSource,
+    currentChatId: string,
   ): Promise<boolean> {
     let pageUrl = await getCurrentUrlBasedOnSource(source);
     let screenshot = await getLatestScreenshot(source);
@@ -406,6 +421,12 @@ IMPORTANT:
         model: this.model,
         messages: messages,
       });
+
+      CostTracker.recordCost(currentChatId, response.model,
+        {
+          prompt_tokens: response!.usage!.prompt_tokens,
+          completion_tokens: response!.usage!.completion_tokens
+        });
 
       const responseText = response.choices[0].message.content || "";
       

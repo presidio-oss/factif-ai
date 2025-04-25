@@ -21,7 +21,7 @@ export const sendChatMessage = async (
   currentChatId: string,
   source: "chrome-puppeteer" | "ubuntu-docker-vnc",
   onChunk: (chunk: string) => void,
-  onComplete: () => void,
+  onComplete: (cost: number) => void,
   onError: (error: Error) => void,
   omniParserResult?: OmniParserResult | null,
   saveScreenshots: boolean = false,
@@ -75,7 +75,8 @@ export const sendChatMessage = async (
 
   let reader: ReadableStreamDefaultReader<Uint8Array>;
   const decoder = new TextDecoder();
-  let connectionTimeout = 0;
+  let connectionTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
+
 
   try {
     reader = response.body.getReader();
@@ -93,14 +94,15 @@ export const sendChatMessage = async (
       try {
         while (true) {
           const { done, value } = await reader.read();
-
           if (done) {
-            onComplete();
+            onComplete(-1);
             break;
           }
 
           hasReceivedMessage = true;
-          clearTimeout(connectionTimeout);
+          if (connectionTimeout) {
+            clearTimeout(connectionTimeout);
+          }
 
           // Use decodeWithStream option to handle potential partial UTF-8 characters
           const chunk = decoder.decode(value, {stream: true});
@@ -112,7 +114,7 @@ export const sendChatMessage = async (
                 // Try to parse the JSON data
                 const data = JSON.parse(line.slice(6));
                 if (data.isComplete) {
-                  onComplete();
+                  onComplete(data.totalCost);
                   return;
                 } else if (data.isError) {
                   onError(new Error(data.message));
@@ -130,7 +132,9 @@ export const sendChatMessage = async (
           }
         }
       } catch (error) {
-        clearTimeout(connectionTimeout);
+        if (connectionTimeout) {
+          clearTimeout(connectionTimeout);
+        }
         console.error("Stream processing error:", error);
         onError(error instanceof Error ? error : new Error(String(error)));
       }
@@ -138,7 +142,9 @@ export const sendChatMessage = async (
 
     processStream();
   } catch (error) {
-    clearTimeout(connectionTimeout);
+    if (connectionTimeout) {
+      clearTimeout(connectionTimeout);
+    }
     throw error instanceof Error ? error : new Error(String(error));
   }
 
@@ -192,7 +198,7 @@ export const sendExploreChatMessage = async (
   currentChatId: string,
   source: "chrome-puppeteer" | "ubuntu-docker-vnc",
   onChunk: (chunk: string) => void,
-  onComplete: (image?: string) => void,
+  onComplete: (image?: string, cost?: number) => void,
   onError: (error: Error) => void,
   omniParserResult?: OmniParserResult | null,
   saveScreenshots: boolean = false,
@@ -250,7 +256,8 @@ export const sendExploreChatMessage = async (
 
   let reader: ReadableStreamDefaultReader<Uint8Array>;
   const decoder = new TextDecoder();
-  let connectionTimeout = 0;
+  let connectionTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
+
 
   try {
     reader = response.body.getReader();
@@ -275,7 +282,9 @@ export const sendExploreChatMessage = async (
           }
 
           hasReceivedMessage = true;
-          clearTimeout(connectionTimeout);
+          if (connectionTimeout) {
+            clearTimeout(connectionTimeout);
+          }
 
           // Use decodeWithStream option to handle potential partial UTF-8 characters
           const chunk = decoder.decode(value, {stream: true});
@@ -287,7 +296,7 @@ export const sendExploreChatMessage = async (
               try {
                 const data = JSON.parse(line.slice(6));
                 if (data.isComplete) {
-                  onComplete(data?.imageData);
+                  onComplete(data?.imageData, data?.totalCost);
                   return;
                 } else if (data.isError) {
                   onError(new Error(data.message));
@@ -304,7 +313,9 @@ export const sendExploreChatMessage = async (
           }
         }
       } catch (error) {
-        clearTimeout(connectionTimeout);
+        if (connectionTimeout) {
+          clearTimeout(connectionTimeout);
+        }
         console.error("Stream processing error:", error);
         onError(error instanceof Error ? error : new Error(String(error)));
       }
@@ -312,7 +323,9 @@ export const sendExploreChatMessage = async (
 
     processStream();
   } catch (error) {
-    clearTimeout(connectionTimeout);
+    if (connectionTimeout) {
+      clearTimeout(connectionTimeout);
+    }
     throw error instanceof Error ? error : new Error(String(error));
   }
 
