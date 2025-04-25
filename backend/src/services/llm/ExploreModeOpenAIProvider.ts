@@ -39,11 +39,13 @@ interface PageMetadata {
 export class ExploreModeOpenAIProvider implements LLMProvider {
   static pageRouter = new Set<string>(); // Tracks visited page URLs
   static visitedPagesCount = 0; // Tracks number of unique pages visited
+  static currentFlow: string | null = null; // Tracks the current flow being explored
 
   // Static method to reset state when switching modes
   static resetState() {
     ExploreModeOpenAIProvider.pageRouter.clear();
     ExploreModeOpenAIProvider.visitedPagesCount = 0;
+    ExploreModeOpenAIProvider.currentFlow = null;
     console.log("ExploreModeOpenAIProvider state has been reset");
   }
 
@@ -131,12 +133,12 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
       const contentArray: ChatCompletionContentPart[] = [
         { type: "text", text: currentMessage },
       ];
-      
+
       // Add the image if available (properly formatted for OpenAI)
       if (imageData.originalImage && imageData.originalImage.length > 0) {
         // Clean the base64 string by removing the prefix if present
         const base64Image = imageData.originalImage.replace(/^data:image\/\w+;base64,/, "");
-        
+
         contentArray.push({
           type: "image_url", 
           image_url: {
@@ -144,7 +146,7 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
           },
         } as ChatCompletionContentPart);
       }
-      
+
       formattedMessages.push({
         role: "user",
         content: contentArray,
@@ -155,7 +157,7 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
         content: currentMessage,
       });
     }
-    
+
     return formattedMessages;
   }
 
@@ -172,6 +174,17 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
     retryCount: number = config.retryAttemptCount
   ): Promise<void> {
     console.log("is image available", !!imageData);
+
+    // Detect if this is a flow-specific exploration request
+    if (type === ExploreActionTypes.EXPLORE) {
+      const flowMatch = message.match(/explore\s+(\w+)\s+flow/i);
+      if (flowMatch && flowMatch[1]) {
+        const flowType = flowMatch[1].toLowerCase();
+        ExploreModeOpenAIProvider.currentFlow = flowType;
+        console.log(`[Explore Mode] Detected flow-specific exploration: ${flowType} flow`);
+      }
+    }
+
     type === ExploreActionTypes.EXPLORE &&
       (await this.generateComponentDescription(source as StreamingSource, currentChatId));
 
@@ -235,7 +248,7 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
       if (config.omniParser.enabled && omniParserResult) {
         const lastUserMessageIndex = messages.length - 1;
         const lastUserMessage = messages[lastUserMessageIndex];
-        
+
         // Handle both string and array content types
         if (typeof lastUserMessage.content === 'string') {
           messages[lastUserMessageIndex].content = 
@@ -248,9 +261,9 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
           }
         }
       }
-      
+
       console.log("Creating completion with model:", this.model);
-      
+
       // Log the message request before sending
       this.logMessageRequest({
         model: this.model,
@@ -291,6 +304,32 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
         extractAndStoreUrlFromResponse(source, accumulatedResponse);
       }
 
+      // Check for flow completion in the response
+      if (ExploreModeOpenAIProvider.currentFlow && accumulatedResponse) {
+        // Check if the response indicates flow completion
+        const flowStatusMatch = accumulatedResponse.match(/<flow_status>complete<\/flow_status>/i);
+        if (flowStatusMatch) {
+          console.log(`[Explore Mode] Flow completed: ${ExploreModeOpenAIProvider.currentFlow} flow`);
+
+          // Extract flow summary if available
+          let flowSummary = "Flow completed";
+          const flowSummaryMatch = accumulatedResponse.match(/<flow_summary>([\s\S]*?)<\/flow_summary>/i);
+          if (flowSummaryMatch && flowSummaryMatch[1]) {
+            flowSummary = flowSummaryMatch[1].trim();
+          }
+
+          // Add completion message to the response
+          const completionMessage = `\n\n[FLOW COMPLETED] The ${ExploreModeOpenAIProvider.currentFlow} flow has been fully explored.\n${flowSummary}`;
+          this.sendStreamResponse(res, {
+            message: completionMessage,
+            timestamp: Date.now(),
+          });
+
+          // Reset current flow
+          ExploreModeOpenAIProvider.currentFlow = null;
+        }
+      }
+
       this.sendStreamResponse(res, {
         message: "",
         isComplete: true,
@@ -320,9 +359,22 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
     currentPageUrl: string
   ): ChatCompletionMessageParam[] {
     if (action === ExploreActionTypes.EXPLORE) {
+      let prompt = exploreModePrompt;
+
+      // Add flow-specific instructions if a flow is being explored
+      if (ExploreModeOpenAIProvider.currentFlow) {
+        prompt += `\n\n# CURRENT FLOW: ${ExploreModeOpenAIProvider.currentFlow.toUpperCase()}
+You are currently exploring the "${ExploreModeOpenAIProvider.currentFlow}" flow. Remember to:
+1. Focus ONLY on elements relevant to the ${ExploreModeOpenAIProvider.currentFlow} flow
+2. Prioritize elements in the order they would typically be used in this flow
+3. Stop exploration and notify the user when the flow is complete
+4. Include <flow_type>${ExploreModeOpenAIProvider.currentFlow}</flow_type> in your response
+5. Set <flow_status>complete</flow_status> when the flow is finished`;
+      }
+
       return [{
         role: "system",
-        content: exploreModePrompt
+        content: prompt
       }];
     } else {
       return [
@@ -348,11 +400,11 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
 
     // Check if this URL is already visited
     if (ExploreModeOpenAIProvider.pageRouter.has(pageUrl)) return false;
-    
+
     // Add URL to visited pages and increment counter
     ExploreModeOpenAIProvider.pageRouter.add(pageUrl);
     ExploreModeOpenAIProvider.visitedPagesCount++;
-    
+
     console.log(`[Explore Mode] Visited page count: ${ExploreModeOpenAIProvider.visitedPagesCount}`);
 
     // Extract page metadata if using Puppeteer
@@ -373,7 +425,7 @@ export class ExploreModeOpenAIProvider implements LLMProvider {
         };
       });
     }
-    
+
     // Generate exploration progress message based on pages visited
     const explorationProgress = ExploreModeOpenAIProvider.visitedPagesCount < 10 ?
       `\n\n⚠️ EXPLORATION PROGRESS: You've only visited ${ExploreModeOpenAIProvider.visitedPagesCount} unique pages so far. For comprehensive documentation, you should explore AT LEAST 10-15 more pages/sections before considering your exploration complete.\n\nDO NOT USE complete_task UNTIL YOU'VE EXPLORED MORE PAGES!` :
@@ -429,7 +481,7 @@ IMPORTANT:
         });
 
       const responseText = response.choices[0].message.content || "";
-      
+
       // Save the result to file
       await saveFileAndScreenshot(
         `${new Date().getTime().toString()}`,
@@ -437,7 +489,7 @@ IMPORTANT:
         "./output",
         responseText
       );
-      
+
       return true;
     } catch (error) {
       console.error("Error generating component description:", error);

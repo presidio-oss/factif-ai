@@ -38,11 +38,13 @@ interface PageMetadata {
 export class ExploreModeAnthropicProvider implements LLMProvider {
   static pageRouter = new Set<string>(); // Tracks visited page URLs
   static visitedPagesCount = 0; // Tracks number of unique pages visited
+  static currentFlow: string | null = null; // Tracks the current flow being explored
 
   // Static method to reset state when switching modes
   static resetState() {
     ExploreModeAnthropicProvider.pageRouter.clear();
     ExploreModeAnthropicProvider.visitedPagesCount = 0;
+    ExploreModeAnthropicProvider.currentFlow = null;
     console.log("ExploreModeAnthropicProvider state has been reset");
   }
 
@@ -198,6 +200,32 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
       extractAndStoreUrlFromResponse(source, completeResponse);
     }
 
+    // Check for flow completion in the response
+    if (ExploreModeAnthropicProvider.currentFlow && completeResponse) {
+      // Check if the response indicates flow completion
+      const flowStatusMatch = completeResponse.match(/<flow_status>complete<\/flow_status>/i);
+      if (flowStatusMatch) {
+        console.log(`[Explore Mode] Flow completed: ${ExploreModeAnthropicProvider.currentFlow} flow`);
+
+        // Extract flow summary if available
+        let flowSummary = "Flow completed";
+        const flowSummaryMatch = completeResponse.match(/<flow_summary>([\s\S]*?)<\/flow_summary>/i);
+        if (flowSummaryMatch && flowSummaryMatch[1]) {
+          flowSummary = flowSummaryMatch[1].trim();
+        }
+
+        // Add completion message to the response
+        const completionMessage = `\n\n[FLOW COMPLETED] The ${ExploreModeAnthropicProvider.currentFlow} flow has been fully explored.\n${flowSummary}`;
+        this.sendStreamResponse(res, {
+          message: completionMessage,
+          timestamp: Date.now(),
+        });
+
+        // Reset current flow
+        ExploreModeAnthropicProvider.currentFlow = null;
+      }
+    }
+
     this.sendStreamResponse(res, {
       message: "",
       timestamp: Date.now(),
@@ -234,6 +262,17 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     retryCount: number = config.retryAttemptCount
   ): Promise<void> {
     console.log("is image available", !!imageData);
+
+    // Detect if this is a flow-specific exploration request
+    if (type === ExploreActionTypes.EXPLORE) {
+      const flowMatch = message.match(/explore\s+(\w+)\s+flow/i);
+      if (flowMatch && flowMatch[1]) {
+        const flowType = flowMatch[1].toLowerCase();
+        ExploreModeAnthropicProvider.currentFlow = flowType;
+        console.log(`[Explore Mode] Detected flow-specific exploration: ${flowType} flow`);
+      }
+    }
+
     type === ExploreActionTypes.EXPLORE &&
     (await this.generateComponentDescription(source as StreamingSource, currentChatId));
 
@@ -371,10 +410,26 @@ export class ExploreModeAnthropicProvider implements LLMProvider {
     }[] = [
       {
         role: "user",
-        content:
-          action === ExploreActionTypes.EXPLORE
-            ? exploreModePrompt
-            : getPerformActionPrompt(source, task, currentPageUrl)
+        content: (() => {
+          if (action === ExploreActionTypes.EXPLORE) {
+            let prompt = exploreModePrompt;
+
+            // Add flow-specific instructions if a flow is being explored
+            if (ExploreModeAnthropicProvider.currentFlow) {
+              prompt += `\n\n# CURRENT FLOW: ${ExploreModeAnthropicProvider.currentFlow.toUpperCase()}
+You are currently exploring the "${ExploreModeAnthropicProvider.currentFlow}" flow. Remember to:
+1. Focus ONLY on elements relevant to the ${ExploreModeAnthropicProvider.currentFlow} flow
+2. Prioritize elements in the order they would typically be used in this flow
+3. Stop exploration and notify the user when the flow is complete
+4. Include <flow_type>${ExploreModeAnthropicProvider.currentFlow}</flow_type> in your response
+5. Set <flow_status>complete</flow_status> when the flow is finished`;
+            }
+
+            return prompt;
+          } else {
+            return getPerformActionPrompt(source, task, currentPageUrl);
+          }
+        })()
       }
     ];
     if (action === ExploreActionTypes.ACTION) {

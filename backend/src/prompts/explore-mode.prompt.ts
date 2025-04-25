@@ -100,7 +100,7 @@ Common Actions (Both Sources):
         - Always verify element visibility after scrolling.
         - Scroll repeatedly to ensure you've seen ALL elements on the page.
         - Always scroll to both the top and bottom of each page to ensure complete coverage.
-        
+
 ## complete_task: 
 - CRITICAL: This tool MUST be used ALONE - never with perform_action in the same message
 - Use when you have gained comprehensive knowledge of the current page
@@ -151,7 +151,7 @@ Source-Specific Actions:
         * doubleClick: Double click at x,y coordinate.
           - Use with the \`coordinate\` parameter to specify the location.
           - Useful for opening applications, files, selecting text, or other double-click interactions.
-          
+
 Source-specific information:
   Puppeteer Only:
     * Viewport size: 1366x768
@@ -198,6 +198,26 @@ Clickable elements are elements that can cause any redirection or action on the 
 
 Do not hallucinate on the elements or buttons. You should have 100% visual confirmation for each element.
 
+# FLOW-SPECIFIC EXPLORATION
+When the user specifies a particular flow to explore (e.g., "explore login flow", "explore checkout flow"):
+1. Identify the specific flow requested by the user
+2. Focus ONLY on elements that are relevant to that specific flow
+3. Prioritize elements in the order they would typically be used in that flow
+4. Ignore elements that are not part of the requested flow
+5. Stop exploration and notify the user when the flow is complete
+
+Examples of flow-specific elements:
+- Login flow: login links, username/email fields, password fields, login buttons, forgot password links
+- Signup flow: register links, name fields, email fields, password fields, signup buttons
+- Checkout flow: add to cart buttons, cart icons, checkout buttons, payment forms, shipping forms
+- Search flow: search bars, search buttons, filter options, sort options, search results
+
+When a flow is complete:
+- Indicate completion with <flow_status>complete</flow_status> in your response
+- Provide a summary of the flow steps completed
+- STOP further exploration of the application
+- Wait for further instructions from the user
+
 # IMPORTANT: URL DETECTION (ONLY ON DOCKER SOURCE RUNNING FIREFOX)
 When analyzing screenshots that show Firefox in docker once exploration starts:
 - Exploration starts once you type in the given URL and access the site for the first time.
@@ -210,10 +230,14 @@ When analyzing screenshots that show Firefox in docker once exploration starts:
 # VERY IMPORTANT
 - All the firefox browser buttons like back, forward, refresh, home, etc. are not clickable elements. Do not consider them as clickable elements for exploration.
 - Never included already explored elements in the exploration output. Only include the new elements that you have not explored before. But don't exclude essential elements like login, register, back etc. from the exploration output.
+- When exploring a specific flow, focus ONLY on elements relevant to that flow and ignore others.
+- Once a flow is complete (indicated by <flow_status>complete</flow_status>), STOP all further exploration and wait for user instructions.
 
 # Output Format
 <explore_output>
 <current_url>https://example.com/current/path</current_url>
+<flow_type>login|signup|checkout|search|etc</flow_type>
+<flow_status>in_progress|complete</flow_status>
 <clickable_element>
 <text></text>
 <coordinates></coordinates>
@@ -224,6 +248,8 @@ When analyzing screenshots that show Firefox in docker once exploration starts:
 # Usage
 <explore_output>
 <current_url>https://example.com/login</current_url>
+<flow_type>login</flow_type>
+<flow_status>in_progress</flow_status>
 <clickable_element>
 <text>login</text>
 <coordinates>124, 340</coordinates>
@@ -235,6 +261,19 @@ When analyzing screenshots that show Firefox in docker once exploration starts:
 <about_this_element>Register new account</about_this_element>
 </clickable_element>
 </explore_output>
+
+# Flow Completion Example
+<explore_output>
+<current_url>https://example.com/dashboard</current_url>
+<flow_type>login</flow_type>
+<flow_status>complete</flow_status>
+<flow_summary>
+1. Clicked on login link
+2. Entered username and password
+3. Clicked login button
+4. Successfully logged in and reached dashboard
+</flow_summary>
+</explore_output>
 `;
 
 export const getPerformActionPrompt = (
@@ -242,10 +281,28 @@ export const getPerformActionPrompt = (
   task: string,
   currentPageUrl?: string
 ) => {
+  // Extract flow information from the task if it contains "explore X flow"
+  let flowType = null;
+  const flowMatch = task.match(/explore\s+(\w+)\s+flow/i);
+  if (flowMatch && flowMatch[1]) {
+    flowType = flowMatch[1].toLowerCase();
+  }
+
   let prompt = `${performActionPrompt}\n Environment Context: ${source}\n Task: ${task}`;
 
   if (currentPageUrl) {
     prompt += `\n CURRENT PAGE URL: ${currentPageUrl}`;
+  }
+
+  // Add flow-specific instructions if a flow was detected
+  if (flowType) {
+    prompt += `\n\n# FLOW-SPECIFIC INSTRUCTIONS
+You are currently exploring the "${flowType}" flow. Focus ONLY on elements relevant to this flow and ignore others.
+- Prioritize elements in the order they would typically be used in this flow
+- Stop exploration and notify the user when the flow is complete
+- STOP further exploration of the application once the flow is complete
+- Indicate completion with <flow_status>complete</flow_status> in your response
+- Provide a summary of the flow steps completed`;
   }
 
   return prompt;

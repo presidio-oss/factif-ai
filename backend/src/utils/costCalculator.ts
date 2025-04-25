@@ -32,6 +32,10 @@ const MODEL_COSTS: Record<string, { input: number; output: number }> = {
     input: 0.0005,
     output: 0.0015
   },
+  'gpt-4.1': {
+    input: 0.0004,
+    output: 0.0016
+  },
   'claude-3-opus-20240229': {
     input: 0.015,
     output: 0.075

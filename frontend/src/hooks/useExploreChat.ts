@@ -66,12 +66,15 @@ export const useExploreChat = () => {
     nodes: [],
     edges: [],
   });
+  const visitedUrls = useRef<Set<string>>(new Set());
+  const visitedElements = useRef<Set<string>>(new Set());
   const currentlyExploring = useRef<{
     url: string;
     id: string;
     nodeId: string;
     label: string;
   } | null>(null);
+  const parentDomain = useRef<string | null>(null);
 
   // Initialize MessageProcessor
   useEffect(() => {
@@ -598,27 +601,50 @@ export const useExploreChat = () => {
   ) => {
     // Track if we have valid image data to save with the elements
 
-    for (const element of processedExploreMessage) {
-      if (element.text && element.coordinates) {
-        const elementId = uuid();
-        const exploredOutput: IExploreQueueItem = {
-          text: element.text,
-          coordinates: element.coordinates,
-          aboutThisElement: element.aboutThisElement || "",
-          source: fullResponse,
-          url,
-          id: elementId,
-          nodeId,
-          // Store the screenshot with each element in memory, but not in localStorage
-          screenshot: imageData,
-          parent: {
-            url: (parent?.url as string) || url,
-            nodeId: (parent?.nodeId as string) || nodeId,
-            id: (parent?.id as string) || elementId,
-          },
-        };
-        exploreQueue.current[url].push(exploredOutput);
+    // Check if we should restrict exploration to the parent domain
+    let shouldRestrict = false;
+    let urlDomain = "";
+
+    try {
+      // Extract domain from the URL
+      const urlObj = new URL(url);
+      urlDomain = urlObj.hostname;
+
+      // If parent domain is set, check if current URL's domain matches
+      if (parentDomain.current && urlDomain !== parentDomain.current) {
+        shouldRestrict = true;
+        console.log(`Restricting exploration: URL domain ${urlDomain} differs from parent domain ${parentDomain.current}`);
       }
+    } catch (e) {
+      console.error(`Failed to parse URL for domain restriction: ${url}`, e);
+    }
+
+    // Only add elements to the queue if we're not restricting or domains match
+    if (!shouldRestrict) {
+      for (const element of processedExploreMessage) {
+        if (element.text && element.coordinates) {
+          const elementId = uuid();
+          const exploredOutput: IExploreQueueItem = {
+            text: element.text,
+            coordinates: element.coordinates,
+            aboutThisElement: element.aboutThisElement || "",
+            source: fullResponse,
+            url,
+            id: elementId,
+            nodeId,
+            // Store the screenshot with each element in memory, but not in localStorage
+            screenshot: imageData,
+            parent: {
+              url: (parent?.url as string) || url,
+              nodeId: (parent?.nodeId as string) || nodeId,
+              id: (parent?.id as string) || elementId,
+            },
+          };
+          exploreQueue.current[url].push(exploredOutput);
+        }
+      }
+    } else {
+      console.log(`Skipped adding ${processedExploreMessage.length} elements from different domain: ${urlDomain}`);
     }
 
     try {
@@ -692,6 +718,20 @@ export const useExploreChat = () => {
 
       console.log(`Processing explore output for URL: ${url}`);
 
+      // Extract domain from the current URL
+      try {
+        const currentUrl = new URL(url);
+        const currentDomain = currentUrl.hostname;
+
+        // Set parent domain if not already set
+        if (!parentDomain.current) {
+          parentDomain.current = currentDomain;
+          console.log(`Set parent domain for exploration: ${parentDomain.current}`);
+        }
+      } catch (e) {
+        console.error(`Failed to parse URL: ${url}`, e);
+      }
+
       // Always process the elements for the current URL, whether we've seen it before or not
       // This ensures we don't miss any clickable elements on pages we revisit
       if (!exploreQueue.current[url]) {
@@ -741,6 +781,10 @@ export const useExploreChat = () => {
         routeSet.add(url);
         console.log(`Added new URL to route set: ${url}`);
       }
+
+      // Mark this URL as visited
+      visitedUrls.current.add(url);
+      console.log(`Marked URL as visited: ${url}`);
 
       // Always update the queue with the latest elements
       handleQueueUpdate(
@@ -806,6 +850,9 @@ export const useExploreChat = () => {
   const getNextToExplore = () => {
     console.log("exploreRoute.current ===>", exploreRoute.current);
     console.log("exploreQueue.current ===>", exploreQueue.current);
+    console.log("visitedUrls.current ===>", Array.from(visitedUrls.current));
+    console.log("visitedElements.current ===>", Array.from(visitedElements.current));
+    console.log("parentDomain.current ===>", parentDomain.current);
 
     // Try each route in order until we find one with items in its queue
     for (let i = 0; i < exploreRoute.current.length; i++) {
@@ -815,9 +862,55 @@ export const useExploreChat = () => {
         exploreQueue.current[route] &&
         exploreQueue.current[route].length > 0
       ) {
+        // Check if this route's domain matches the parent domain
+        let routeDomain = "";
+        let shouldSkipRoute = false;
+
+        try {
+          const routeUrl = new URL(route);
+          routeDomain = routeUrl.hostname;
+
+          // If parent domain is set and doesn't match this route's domain, skip it
+          if (parentDomain.current && routeDomain !== parentDomain.current) {
+            shouldSkipRoute = true;
+            console.log(`Skipping route with different domain: ${route} (${routeDomain} vs ${parentDomain.current})`);
+            continue; // Skip to the next route
+          }
+        } catch (e) {
+          console.error(`Failed to parse route URL for domain check: ${route}`, e);
+        }
+
+        // If we should skip this route due to domain mismatch, continue to next route
+        if (shouldSkipRoute) {
+          continue;
+        }
+
+        // Filter out items that have already been visited
+        const availableItems = exploreQueue.current[route].filter(item => {
+          // Create a unique key for this element using URL, text, and coordinates
+          const elementKey = `${item.url}|${item.text}|${item.coordinates}`;
+          return !visitedElements.current.has(elementKey);
+        });
+
+        // Update the queue with only unvisited items
+        exploreQueue.current[route] = availableItems;
+
+        // If there are no unvisited items in this route, continue to the next route
+        if (availableItems.length === 0) {
+          console.log(`No unvisited elements for URL: ${route}`);
+          continue;
+        }
+
         // Found a route with items to explore
         const nextItem = exploreQueue.current[route].shift();
         if (nextItem) {
+          // Mark this element as visited
+          const elementKey = `${nextItem.url}|${nextItem.text}|${nextItem.coordinates}`;
+          visitedElements.current.add(elementKey);
+
+          // Add the URL to visitedUrls for tracking purposes
+          visitedUrls.current.add(route);
+
           currentlyExploring.current = {
             url: route,
             id: nextItem.id,
@@ -1152,7 +1245,10 @@ export const useExploreChat = () => {
       exploreGraphData.current = { nodes: [], edges: [] };
       exploreQueue.current = {};
       exploreRoute.current = [];
+      visitedUrls.current = new Set();
+      visitedElements.current = new Set();
       currentlyExploring.current = null;
+      parentDomain.current = null; // Reset parent domain for new exploration
       setGraphData({ nodes: [], edges: [] });
 
       // Clear localStorage MAP data to ensure a fresh start
@@ -1270,6 +1366,9 @@ export const useExploreChat = () => {
       hasPartialMessage.current = false;
       activeMessageId.current = null;
       isProcessing.current = false;
+      visitedUrls.current = new Set();
+      visitedElements.current = new Set();
+      parentDomain.current = null; // Reset parent domain when loading a session
 
       console.log(
         `Loaded session ${sessionId} with ${session.messages?.length || 0} messages and ${exploreGraphData.current.nodes.length} nodes`,
