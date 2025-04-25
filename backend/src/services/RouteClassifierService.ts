@@ -60,8 +60,7 @@ export class RouteClassifierService {
         (!config.llm.anthropic.apiKey && !config.llm.anthropic.useBedrock) ||
         (config.llm.anthropic.useBedrock &&
           (!config.llm.anthropic.bedrock.credentials.accessKeyId ||
-            !config.llm.anthropic.bedrock.credentials.secretAccessKey ||
-            !config.llm.anthropic.bedrock.credentials.sessionToken))
+            !config.llm.anthropic.bedrock.credentials.secretAccessKey))
       ) {
         console.log(
           "No Anthropic API key configured, using URL pattern matching as fallback"
