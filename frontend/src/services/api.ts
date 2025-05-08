@@ -168,6 +168,7 @@ export const getFileStructure = async (path: string) => {
 export const executeAction = async (
   action: Action,
   source: StreamingSource,
+  config: Record<string, string>
 ): Promise<ActionResult> => {
   const response = await fetch(
     `${API_BASE_URL}/actions/execute?source=${source}`,
@@ -175,6 +176,7 @@ export const executeAction = async (
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "X-factifai-config": btoa(JSON.stringify(config))
       },
       body: JSON.stringify(action),
     },
