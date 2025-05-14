@@ -26,6 +26,8 @@ interface AppContextType {
   switchMode: (newMode: "explore" | "regression") => Promise<void>;
   cost: number;
   setCost: React.Dispatch<React.SetStateAction<number>>;
+  secrets: {}
+  setSecrets: React.Dispatch<React.SetStateAction<Record<string, string>>>
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -53,6 +55,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [mode, setMode] = useState<string>("explore");
   const [type, setType] = useState<string>("action");
   const [cost, setCost] = useState<number>(0);
+  const [secrets, setSecrets] = useState<Record<string, string>>(loadSecretIfAny());
+
 
   // Initialize with proper backend mode
   useEffect(() => {
@@ -115,8 +119,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setType,
     switchMode,
     setCost,
-    cost
+    cost,
+    setSecrets,
+    secrets,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
+
+const loadSecretIfAny = () => {
+  let secrets: Record<string, string> = {}
+  try {
+    const items = localStorage.getItem("APP_SECRET");
+    if (items) {
+      secrets = JSON.parse(atob(items)) as Record<string, string>;
+    }
+  } catch (e) {
+  }
+  return secrets;
+}

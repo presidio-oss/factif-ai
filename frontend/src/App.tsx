@@ -15,6 +15,7 @@ import { NextUIProvider } from "@nextui-org/react";
 import "./App.css";
 import { ExploreModeProvider } from "@/contexts/ExploreModeContext.tsx";
 import StorageManager from "./components/StorageManager/StorageManager";
+import SecretManager from "./components/SecretManager/SecretManager";
 
 function App() {
   return (
@@ -54,6 +55,7 @@ function App() {
                   }
                 />
                 <Route path="/explore-mode" element={<ExploreMode />} />
+                <Route path="/secrets" element={<SecretManager />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </div>

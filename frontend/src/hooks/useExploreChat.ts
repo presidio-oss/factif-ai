@@ -40,7 +40,8 @@ export const useExploreChat = () => {
     streamingSource,
     saveScreenshots,
     setType,
-    setCost
+    setCost,
+    secrets
   } = useAppContext();
 
   const {
@@ -169,7 +170,7 @@ export const useExploreChat = () => {
             type: "perform_action",
             action: "close",
           };
-          await executeAction(closeAction, streamingSource);
+          await executeAction(closeAction, streamingSource, secrets);
           console.log("Browser instance closed on ExploreChat unmount");
           browserLaunched.current = false;
         })();
@@ -1225,7 +1226,6 @@ export const useExploreChat = () => {
       isProcessing.current = false;
       messagesRef.current = [];
       setMessages([]);
-
       // First, properly close any existing browser instance
       try {
         // Execute the close action to ensure browser is properly closed
@@ -1233,7 +1233,7 @@ export const useExploreChat = () => {
           type: "perform_action",
           action: "close",
         };
-        await executeAction(closeAction, streamingSource);
+        await executeAction(closeAction, streamingSource, secrets);
         browserLaunched.current = false;
         console.log("Browser instance closed successfully");
       } catch (error) {

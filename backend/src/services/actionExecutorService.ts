@@ -31,6 +31,7 @@ class ActionExecutorService {
 
   async executeAction(
     request: ActionRequest,
+    secretConfig: Record<string, string> = {},
   ): Promise<ActionResponse | string> {
     try {
       // Get the appropriate service first
@@ -75,6 +76,9 @@ class ActionExecutorService {
         }
       }
 
+      if (request.text) {
+        request.text = this.getText(request.text, secretConfig);
+      }
       // Route action through the selected service
       return (await service.performAction(request, {
         url: request.url,
@@ -101,6 +105,13 @@ class ActionExecutorService {
         error: (error as Error).message,
       };
     }
+  }
+
+  getText(text: string | undefined, config: Record<string, string>): string {
+    if (!text) {
+      return "";
+    }
+    return config.hasOwnProperty(text) ? config[text] : text;
   }
 
   private getServiceForSource(

@@ -15,7 +15,8 @@ export const useChat = () => {
     currentChatId,
     streamingSource,
     saveScreenshots,
-    setCost
+    setCost,
+    secrets
   } = useAppContext();
 
   // Initialize MessageProcessor with setHasActiveAction
@@ -182,6 +183,7 @@ export const useChat = () => {
             const processedResponse = await MessageProcessor.processMessage(
               fullResponse,
               streamingSource,
+              secrets
             );
 
             if (processedResponse.actionResult) {

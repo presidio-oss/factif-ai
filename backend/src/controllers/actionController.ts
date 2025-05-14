@@ -12,38 +12,53 @@ interface ActionQueryParams {
   source?: StreamingSource;
 }
 
+const loadSecretConfig = (inputConfig: string): Record<string, string> => {
+  let config: Record<string, string> = {};
+  try {
+    config = JSON.parse(atob(inputConfig));
+  } catch (e) {
+  }
+  return config;
+};
+
 class ActionController {
+
+
+
   async executeAction(
     req: Request<{}, {}, ActionRequest, ActionQueryParams>,
-    res: Response,
+    res: Response
   ) {
     try {
       const { source } = req.query;
       const { action } = req.body;
 
+      const secretConfig = loadSecretConfig(req.headers["x-factifai-config"] as string);
+
+
       if (!action || !source) {
         return res.status(400).json({
           status: "error",
           message: "Missing required parameters",
-          screenshot: "",
+          screenshot: ""
         });
       }
 
       // Execute the action
       const result = await actionExecutorService.executeAction({
         ...req.body,
-        source,
-      });
+        source
+      }, secretConfig);
       const latestScreenshot = await getLatestScreenshot(source);
       let omniParserResult = null;
       if (config.omniParser.enabled) {
         omniParserResult = await omniParserService.processImage(latestScreenshot.originalImage);
       }
-      let response: any = {screenshot: latestScreenshot?.originalImage, omniParserResults: omniParserResult};
+      let response: any = { screenshot: latestScreenshot?.originalImage, omniParserResults: omniParserResult };
       if (typeof result === "string") {
-        response = {...response, result}
+        response = { ...response, result };
       } else {
-        response = {...response, ...result}
+        response = { ...response, ...result };
       }
 
       return res.json(response);
@@ -53,7 +68,7 @@ class ActionController {
         status: "error",
         message: "Failed to execute action",
         screenshot: "",
-        error: (error as Error).message,
+        error: (error as Error).message
       });
     }
   }

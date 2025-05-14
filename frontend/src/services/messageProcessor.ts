@@ -19,7 +19,7 @@ export class MessageProcessor {
 
   static parseActionResult(text: string): string {
     const match = text.match(
-      /<perform_action_result>[\s\S]*?<action_message>(.*?)<\/action_message>[\s\S]*?<\/perform_action_result>/,
+      /<perform_action_result>[\s\S]*?<action_message>(.*?)<\/action_message>[\s\S]*?<\/perform_action_result>/
     );
     return match ? match[1] : text;
   }
@@ -27,10 +27,10 @@ export class MessageProcessor {
   static async processMessage(
     chunk: string,
     source: StreamingSource,
+    secrets: Record<string, string> = {},
   ): Promise<ProcessedMessage> {
     // Extract any perform_action from the chunk
     const action = MessagePatterns.extractAction(chunk);
-
     if (action) {
       try {
         // Only execute actions that are explicitly requested by the LLM
@@ -39,7 +39,7 @@ export class MessageProcessor {
         // URLMessage component also checks isBrowserStarted() to avoid reinitializing
 
         MessageProcessor.setHasActiveAction?.(true);
-        const response = await executeAction(action, source);
+        const response = await executeAction(action, source, secrets);
         MessageProcessor.setHasActiveAction?.(false);
         const actionMessage =
           response.message || response.error || "Action completed";
@@ -54,7 +54,7 @@ ${response.omniParserResult ? `<omni_parser>${JSON.stringify(response.omniParser
 
         // Extract omni parser result if present
         const omniParserMatch = actionResult.match(
-          /<omni_parser>(.*?)<\/omni_parser>/s,
+          /<omni_parser>(.*?)<\/omni_parser>/s
         );
         const omniParserResult = omniParserMatch
           ? JSON.parse(omniParserMatch[1])

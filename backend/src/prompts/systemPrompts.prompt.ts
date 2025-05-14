@@ -264,6 +264,7 @@ Important Notes:
 - Docker: Always analyze screenshot first, no 'launch' action needed
 - Strictly use only one action per response and wait for the "Action Result" before proceeding.
 - Indicate the status of each test-step with ✅ or ❌ in the beginning to indicate success or failure. (e.g. ✅ Step 1: Click on the button and verify the result)
+- IF user provided any template literal instead of credentials use them as it is without fail. 
 `;
 
 const getSystemPrompt = (
