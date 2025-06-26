@@ -293,7 +293,7 @@ export const ExploreChat = () => {
       {cost > 0 && (
         <div
           className={
-            "flex items-center justify-start text-orange-500 text-left px-4 py-1 border-t-1 border-content3 bg-[#242121]"
+            "hidden flex items-center justify-start text-orange-500 text-left px-4 py-1 border-t-1 border-content3 bg-[#242121]"
           }
         >
           Cost: ${cost.toFixed(4)}
