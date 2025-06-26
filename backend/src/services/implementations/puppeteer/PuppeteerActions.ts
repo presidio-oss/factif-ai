@@ -52,8 +52,6 @@ export class PuppeteerActions {
         
         const { tagName, id, className } = element;
         const href = element.getAttribute('href');
-        const isOffScreen = element.getBoundingClientRect().top > window.innerHeight || 
-                           element.getBoundingClientRect().top < window.scrollY;
         const isInput = tagName === 'INPUT' || tagName === 'TEXTAREA' || 
                        element.hasAttribute('contenteditable');
         
@@ -67,10 +65,6 @@ export class PuppeteerActions {
           linkHref = linkElement.getAttribute('href');
           isNewTabLink = linkTarget === '_blank' || linkTarget === '_new';
         }
-                       
-        if (isOffScreen) {
-          element.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
         
         return {
           tagName,
@@ -78,7 +72,6 @@ export class PuppeteerActions {
           className,
           href,
           isInput,
-          isOffScreen,
           isNewTabLink,
           linkTarget,
           linkHref,
@@ -91,11 +84,6 @@ export class PuppeteerActions {
           status: "error",
           message: "No element found at specified coordinates",
         };
-      }
-      
-      // If element was off-screen, wait briefly for scrolling to complete
-      if (elementInfo.isOffScreen) {
-        await page.waitForTimeout(300);
       }
       
       // Store if this is an input field for later
