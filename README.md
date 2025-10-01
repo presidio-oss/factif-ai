@@ -70,6 +70,9 @@ Built-in support for leading vision-language models:
 
 ## 📥 Getting Started
 
+> [!TIP]
+> Looking for an agentic version? Check out https://factifai.io
+
 1. **Download and Install**
    ```bash
    git clone https://github.com/presidio-oss/factif-ai.git
