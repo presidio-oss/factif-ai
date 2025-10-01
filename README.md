@@ -24,6 +24,9 @@
 
 **Factifai** revolutionizes test automation by directly controlling your computer through AI. Using built-in vision capabilities of Claude, OpenAI, and Gemini along with computer use, it can navigate any application naturally - clicking, typing, and verifying results just like a human would.
 
+> [!TIP]
+> Looking for an agentic version? Check out https://factifai.io
+
 <div align="center">
 <img src="assets/gifs/factif-ai-demo.gif" alt="FACTIF-AI in action" width="900"/>
 </div>
